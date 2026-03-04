@@ -114,8 +114,8 @@ Read `.claude/skills/handoff/hooks.json` for the canonical hook definitions.
 
 **Resolve hook paths by install scope:**
 
-- **Project install** (`.claude/skills/handoff/hooks.json` exists): use hook command strings from `hooks.json` as-is. The `$CLAUDE_PROJECT_DIR` variable in each command is set by Claude Code to the project root at session start — it works correctly and is portable across machines and developers.
-- **Global install** (only `~/.claude/skills/handoff/hooks.json` exists): replace `$CLAUDE_PROJECT_DIR/.claude/skills/handoff/scripts/` with `$HOME/.claude/skills/handoff/scripts/` in every command string. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the hook commands contain literal paths that work in any project.
+- **Project install** (`.claude/skills/handoff/hooks.json` exists): use hook command strings from `hooks.json` as-is. Each command uses `git rev-parse --absolute-git-dir` to locate the main project's `.git` directory and resolve scripts relative to it. This works correctly from both the main worktree and any git worktree (e.g. created with `/mkwt`). If the script file doesn't exist, the hook exits 0 silently — safe to run from any project.
+- **Global install** (only `~/.claude/skills/handoff/hooks.json` exists): replace each entire `command` string with a simple literal path call. Extract the script filename from the `command` in `hooks.json`, then construct: `python3 "<expanded-HOME>/.claude/skills/handoff/scripts/<script-name>.py"`. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the commands contain literal paths that work in any project.
 
 **Determine target file:**
 1. Read both `.claude/settings.json` and `.claude/settings.local.json` (missing files count as empty).
