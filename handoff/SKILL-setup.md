@@ -112,15 +112,10 @@ Tell the user: **"Plugin installed. Please exit and reopen OpenCode — plugins 
 
 Read `.claude/skills/handoff/hooks.json` for the canonical hook definitions.
 
-**Detect install scope and resolve hook paths:**
+**Resolve hook paths by install scope:**
 
-Always write **absolute paths** in hook commands — relative paths are unreliable because `CLAUDE_PROJECT_DIR` can vary (worktrees, session continuations, etc.).
-
-Determine the absolute scripts directory:
-- **Project install** (`.claude/skills/handoff/hooks.json` exists): resolve the project root with `git rev-parse --show-toplevel` and use `<project_root>/.claude/skills/handoff/scripts/` as the prefix.
-- **Global install** (only `~/.claude/skills/handoff/hooks.json` exists): use `~/.claude/skills/handoff/scripts/` (expand `~` to the actual home directory path, e.g. `/Users/alice/.claude/skills/handoff/scripts/`).
-
-Replace `.claude/skills/handoff/scripts/` in every command string from `hooks.json` with the resolved absolute path before merging into settings.
+- **Project install** (`.claude/skills/handoff/hooks.json` exists): use hook command strings from `hooks.json` as-is. The `$CLAUDE_PROJECT_DIR` variable in each command is set by Claude Code to the project root at session start — it works correctly and is portable across machines and developers.
+- **Global install** (only `~/.claude/skills/handoff/hooks.json` exists): replace `$CLAUDE_PROJECT_DIR/.claude/skills/handoff/scripts/` with `$HOME/.claude/skills/handoff/scripts/` in every command string. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the hook commands contain literal paths that work in any project.
 
 **Determine target file:**
 1. Read both `.claude/settings.json` and `.claude/settings.local.json` (missing files count as empty).
