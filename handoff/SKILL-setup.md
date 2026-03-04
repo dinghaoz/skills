@@ -112,6 +112,16 @@ Tell the user: **"Plugin installed. Please exit and reopen OpenCode — plugins 
 
 Read `.claude/skills/handoff/hooks.json` for the canonical hook definitions.
 
+**Detect install scope and resolve hook paths:**
+
+Always write **absolute paths** in hook commands — relative paths are unreliable because `CLAUDE_PROJECT_DIR` can vary (worktrees, session continuations, etc.).
+
+Determine the absolute scripts directory:
+- **Project install** (`.claude/skills/handoff/hooks.json` exists): resolve the project root with `git rev-parse --show-toplevel` and use `<project_root>/.claude/skills/handoff/scripts/` as the prefix.
+- **Global install** (only `~/.claude/skills/handoff/hooks.json` exists): use `~/.claude/skills/handoff/scripts/` (expand `~` to the actual home directory path, e.g. `/Users/alice/.claude/skills/handoff/scripts/`).
+
+Replace `.claude/skills/handoff/scripts/` in every command string from `hooks.json` with the resolved absolute path before merging into settings.
+
 **Determine target file:**
 1. Read both `.claude/settings.json` and `.claude/settings.local.json` (missing files count as empty).
 2. Check whether each file has a `hooks` key with any entries (handoff or otherwise).
@@ -129,7 +139,7 @@ Remember the chosen file — do NOT apply yet.
 For each hook event type defined in `hooks.json` (currently: `PreToolUse`, `Notification`, `PermissionRequest`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `SessionStart`, `SessionEnd`):
 
 1. Look at the target file's existing array for that event type (may be absent or may contain entries for other tools).
-2. For each handoff hook entry in `hooks.json`, check whether an entry with the **same `command` string** already exists in the array.
+2. For each handoff hook entry in `hooks.json` (with paths adjusted for install scope), check whether an entry with the **same `command` string** already exists in the array.
 3. If it does not exist, append it to the array. If it already exists, skip (idempotent).
 
 This ensures existing non-handoff hooks are preserved and handoff hooks are never duplicated.

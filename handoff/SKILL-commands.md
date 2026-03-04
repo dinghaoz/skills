@@ -72,7 +72,7 @@ Reverse of `/handoff init`: remove installed hooks or plugin files, then optiona
 1. Confirm with user.
 
 **Claude Code path:**
-2. Remove all handoff hooks (`PreToolUse`, `Notification`, `PermissionRequest`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `SessionStart`, `SessionEnd`) from `.claude/settings.json` and `.claude/settings.local.json` via `Edit` tool. For each event type, remove only entries whose `command` references `.claude/skills/handoff/scripts/`. Leave non-handoff entries untouched.
+2. Remove all handoff hooks (`PreToolUse`, `Notification`, `PermissionRequest`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `SessionStart`, `SessionEnd`) from `.claude/settings.json` and `.claude/settings.local.json` via `Edit` tool. For each event type, remove only entries whose `command` contains `handoff/scripts/`. Leave non-handoff entries untouched.
 
 **OpenCode path:**
 2. Restore plugin files back to the skill's assets directory, then remove from `.opencode/`:
