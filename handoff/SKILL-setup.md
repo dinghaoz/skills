@@ -226,3 +226,7 @@ If preflight fails with "Worker VERIFY_TOKEN not configured", the worker's webho
 echo '<VERIFICATION_TOKEN>' | npx wrangler secret put VERIFY_TOKEN --config .claude/skills/handoff/worker/wrangler.toml
 ```
 Re-run preflight to confirm it passes. This step is required — the worker rejects all webhook events without a valid VERIFY_TOKEN.
+
+**If hooks were just installed in this session:** tell the user:
+
+> Setup complete. **Exit and restart Claude Code**, then run `/handoff` to enter handoff mode. (The hooks injecting session context run at startup — they aren't active until the next session.)

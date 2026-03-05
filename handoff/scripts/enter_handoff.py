@@ -21,7 +21,6 @@ import argparse
 import json
 import os
 import sys
-import uuid
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -39,18 +38,15 @@ def _jprint(obj):
 
 
 def _resolve_env():
-    """Ensure HANDOFF_PROJECT_DIR, HANDOFF_SESSION_ID, HANDOFF_SESSION_TOOL are set."""
-    if not os.environ.get("HANDOFF_PROJECT_DIR"):
-        fallback = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-        os.environ["HANDOFF_PROJECT_DIR"] = fallback
-
-    if not os.environ.get("HANDOFF_SESSION_ID"):
-        os.environ["HANDOFF_SESSION_ID"] = str(uuid.uuid4())
-
-    if not os.environ.get("HANDOFF_SESSION_TOOL"):
-        # Detect runtime: OpenCode plugin always sets this, so missing = Claude Code
-        tool = "Claude Code" if os.environ.get("CLAUDECODE") else "Claude Code"
-        os.environ["HANDOFF_SESSION_TOOL"] = tool
+    """Verify required env vars are set. Raises with a clear message if not."""
+    missing = [v for v in ("HANDOFF_PROJECT_DIR", "HANDOFF_SESSION_ID", "HANDOFF_SESSION_TOOL")
+               if not os.environ.get(v)]
+    if missing:
+        raise RuntimeError(
+            f"Missing env vars: {', '.join(missing)}. "
+            "The SessionStart hook sets these at session start. "
+            "Exit and restart Claude Code, then run /handoff again."
+        )
 
 
 def _pick_inactive(groups):
