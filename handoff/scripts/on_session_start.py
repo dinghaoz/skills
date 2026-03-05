@@ -64,12 +64,31 @@ def main():
     # Write per-session cache file as fallback for session_id resolution.
     # CLAUDE_ENV_FILE is empty for globally-installed SessionStart hooks (known Claude Code
     # bug: https://github.com/anthropics/claude-code/issues/15840), so we can't rely on it.
-    # We store ppid (= Claude Code process PID) so enter_handoff.py can identify the correct
-    # session when multiple sessions are running simultaneously.
+    # We store ancestor PIDs so enter_handoff.py can identify the correct session by
+    # intersecting its own ancestor chain with the stored one. This handles variable
+    # process tree depth (hook may be spawned via shell wrapper or directly).
     if session_id:
         try:
             sessions_dir = os.path.expanduser("~/.handoff/sessions")
             os.makedirs(sessions_dir, exist_ok=True)
+            # Collect ancestor PIDs (up to 3 levels: us → shell? → Claude Code → ...)
+            ancestors = []
+            pid = os.getpid()
+            for _ in range(3):
+                try:
+                    ppid = os.getppid() if pid == os.getpid() else int(
+                        subprocess.run(
+                            ["ps", "-o", "ppid=", "-p", str(pid)],
+                            capture_output=True, text=True,
+                        ).stdout.strip()
+                    )
+                    if ppid > 1:
+                        ancestors.append(ppid)
+                        pid = ppid
+                    else:
+                        break
+                except Exception:
+                    break
             cache_file = os.path.join(sessions_dir, f"{session_id}.json")
             with open(cache_file, "w") as f:
                 json.dump({
@@ -77,7 +96,7 @@ def main():
                     "project_dir": project_dir or "",
                     "session_tool": "Claude Code",
                     "written_at": time.time(),
-                    "ppid": os.getppid(),
+                    "ancestors": ancestors,
                 }, f)
             # Clean up session files older than 24h to avoid accumulation
             cutoff = time.time() - 86400

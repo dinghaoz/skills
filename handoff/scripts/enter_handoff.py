@@ -17,7 +17,7 @@ Runs Steps A→B→C(auto)→D and returns one of:
 Env var resolution (in order):
   HANDOFF_PROJECT_DIR  — env var, then CLAUDE_PROJECT_DIR, then cwd
   HANDOFF_SESSION_TOOL — env var, then always "Claude Code"
-  HANDOFF_SESSION_ID   — env var, then ~/.handoff/sessions/<id>.json matched by ppid
+  HANDOFF_SESSION_ID   — env var, then ~/.handoff/sessions/<id>.json matched by ancestor PIDs
 """
 
 import argparse
@@ -40,23 +40,32 @@ def _jprint(obj):
     print(json.dumps(obj, ensure_ascii=True))
 
 
-def _get_claude_pid():
-    """Return the PID of the Claude Code process that spawned this Bash call.
+def _get_ancestors(depth=3):
+    """Return ancestor PIDs up to `depth` levels above this process.
 
-    Process tree: Claude Code (PID=X) → bash (PID=Y) → enter_handoff.py (us)
-    os.getppid() gives Y (bash). We then query bash's parent to get X.
-    Returns None if the PID cannot be determined.
+    Walks up: enter_handoff.py → bash → Claude Code → ...
+    Returns a set of PIDs. The Claude Code PID will be somewhere in this set,
+    regardless of whether the process tree has intermediate shells.
     """
     import subprocess as _sp
-    try:
-        bash_pid = os.getppid()
-        result = _sp.run(
-            ["ps", "-o", "ppid=", "-p", str(bash_pid)],
-            capture_output=True, text=True,
-        )
-        return int(result.stdout.strip())
-    except Exception:
-        return None
+    ancestors = []
+    pid = os.getpid()
+    for _ in range(depth):
+        try:
+            ppid = os.getppid() if pid == os.getpid() else int(
+                _sp.run(
+                    ["ps", "-o", "ppid=", "-p", str(pid)],
+                    capture_output=True, text=True,
+                ).stdout.strip()
+            )
+            if ppid > 1:
+                ancestors.append(ppid)
+                pid = ppid
+            else:
+                break
+        except Exception:
+            break
+    return set(ancestors)
 
 
 def _resolve_env():
@@ -65,10 +74,10 @@ def _resolve_env():
     Fallback chain:
       HANDOFF_SESSION_TOOL — always "Claude Code" (enter_handoff is Claude Code only)
       HANDOFF_PROJECT_DIR  — CLAUDE_PROJECT_DIR env var, then os.getcwd()
-      HANDOFF_SESSION_ID   — ~/.handoff/sessions/<id>.json matched by ppid.
-                             The hook stores ppid = Claude Code's PID. We derive the
-                             same PID by walking up: us → bash → Claude Code. Exact
-                             ppid match means no ambiguity even with multiple sessions.
+      HANDOFF_SESSION_ID   — ~/.handoff/sessions/<id>.json matched by ancestor PIDs.
+                             Both the hook and this script share Claude Code as an ancestor.
+                             The hook stores its ancestor chain; we compute ours and intersect.
+                             A non-empty intersection means same Claude Code session.
     Returns error dict {"status": "restart_required", "missing": [...]} if session_id
     cannot be resolved.
     """
@@ -81,19 +90,20 @@ def _resolve_env():
         fallback = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
         os.environ["HANDOFF_PROJECT_DIR"] = fallback
 
-    # HANDOFF_SESSION_ID — find session file whose ppid matches our Claude Code parent
+    # HANDOFF_SESSION_ID — find session file with matching ancestor PIDs
     if not os.environ.get("HANDOFF_SESSION_ID"):
         sessions_dir = os.path.expanduser("~/.handoff/sessions")
         if os.path.isdir(sessions_dir):
             try:
-                claude_pid = _get_claude_pid()
+                my_ancestors = _get_ancestors()
                 for fname in os.listdir(sessions_dir):
                     if not fname.endswith(".json"):
                         continue
                     try:
                         with open(os.path.join(sessions_dir, fname)) as f:
                             data = json.load(f)
-                        if claude_pid and data.get("ppid") == claude_pid:
+                        stored = set(data.get("ancestors", []))
+                        if my_ancestors and stored and my_ancestors & stored:
                             os.environ["HANDOFF_SESSION_ID"] = data["session_id"]
                             break
                     except Exception:
