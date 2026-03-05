@@ -136,10 +136,16 @@ Tell the user: **"Plugin installed. Please exit and reopen OpenCode — plugins 
 
 **Claude Code users:** Install hooks into a Claude settings file.
 
-**Detect install scope first:**
+**Detect install scope — run this check, do NOT guess:**
 
-- **Project install**: `.claude/skills/handoff/hooks.json` exists in the current directory → hooks.json is here, settings target is `.claude/settings.json` (or `.claude/settings.local.json` for permissions only).
-- **Global install**: only `~/.claude/skills/handoff/hooks.json` exists → hooks.json is there, settings target is `~/.claude/settings.json`.
+```bash
+ls .claude/skills/handoff/hooks.json 2>/dev/null && echo "SCOPE=project" || echo "SCOPE=global"
+```
+
+- **Project install** (`SCOPE=project`): `.claude/skills/handoff/hooks.json` exists in the current working directory.
+- **Global install** (`SCOPE=global`): it does NOT exist in the current directory — use `~/.claude/skills/handoff/hooks.json` instead.
+
+**CRITICAL: The scope determines BOTH the hooks.json source AND the settings.json target. Do NOT mix scopes.** A global install MUST write to `~/.claude/settings.json`. A project install MUST write to `.claude/settings.json`. Writing global hooks to the project settings (or vice versa) is a bug.
 
 **IMPORTANT: Hooks MUST go in `settings.json`, NOT `settings.local.json`.** Claude Code silently ignores hooks defined in `settings.local.json` — they simply won't fire. Only permissions work from `settings.local.json`.
 
@@ -150,16 +156,18 @@ Use the scope-appropriate paths throughout the rest of this step.
 - **Project install**: use hook command strings from `hooks.json` as-is. Each command uses `git rev-parse --absolute-git-dir` to locate the main project's `.git` directory and resolve scripts relative to it. This works correctly from both the main worktree and any git worktree (e.g. created with `/mkwt`). If the script file doesn't exist, the hook exits 0 silently — safe to run from any project.
 - **Global install**: replace each entire `command` string with a literal path. Extract the script filename from the `command` in `hooks.json`, then construct: `python3 "<expanded-HOME>/.claude/skills/handoff/scripts/<script-name>.py"`. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the commands contain literal paths that work in any project.
 
-**Determine target file:**
+**Determine target file (must match scope):**
 
 Hooks MUST go in `settings.json` (not `settings.local.json`). Claude Code only loads hooks from `settings.json`.
+
+| Scope | settings.json target |
+|-------|---------------------|
+| **project** | `.claude/settings.json` (in project root) |
+| **global** | `~/.claude/settings.json` (user home) |
 
 1. Read the `settings.json` for the detected scope.
 2. If it already has a `hooks` key, merge into it.
 3. If not, create the `hooks` key.
-
-For **project install**: target is `.claude/settings.json` (shared, committed to git).
-For **global install**: target is `~/.claude/settings.json`.
 
 Remember the chosen file — do NOT apply yet.
 
