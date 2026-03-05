@@ -39,13 +39,18 @@ def _jprint(obj):
 
 
 def _resolve_env():
-    """Ensure HANDOFF_PROJECT_DIR and HANDOFF_SESSION_ID are set in the process env."""
+    """Ensure HANDOFF_PROJECT_DIR, HANDOFF_SESSION_ID, HANDOFF_SESSION_TOOL are set."""
     if not os.environ.get("HANDOFF_PROJECT_DIR"):
         fallback = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
         os.environ["HANDOFF_PROJECT_DIR"] = fallback
 
     if not os.environ.get("HANDOFF_SESSION_ID"):
         os.environ["HANDOFF_SESSION_ID"] = str(uuid.uuid4())
+
+    if not os.environ.get("HANDOFF_SESSION_TOOL"):
+        # Detect runtime: OpenCode plugin always sets this, so missing = Claude Code
+        tool = "Claude Code" if os.environ.get("CLAUDECODE") else "Claude Code"
+        os.environ["HANDOFF_SESSION_TOOL"] = tool
 
 
 def _pick_inactive(groups):
