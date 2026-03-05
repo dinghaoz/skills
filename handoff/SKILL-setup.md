@@ -154,9 +154,13 @@ Use the scope-appropriate paths throughout the rest of this step.
 3. Choose the target file:
    - Only one file has a `hooks` key → use that file (no need to ask).
    - Both files have a `hooks` key → prefer `settings.json`; if that would be surprising (e.g. the only hooks are in `settings.local.json`), use **AskUserQuestion** to let the user pick.
-   - Neither file has a `hooks` key → use **AskUserQuestion** with two options:
-     - **"Add to settings.json (shared, committed to git)"** — for project install
-     - **"Add to settings.local.json (this machine only, not committed)"** — preferred for global install
+   - Neither file has a `hooks` key → use **AskUserQuestion** with two options (tailor descriptions to install scope):
+     - **Project install** options:
+       - `settings.local.json` — machine-local, not committed to git (Recommended)
+       - `settings.json` — shared, committed to git with the project
+     - **Global install** options (both files are in `~/.claude/`):
+       - `settings.local.json` — machine-specific; exclude from dotfiles sync (Recommended)
+       - `settings.json` — can be synced across machines via dotfiles
 
 Remember the chosen file — do NOT apply yet.
 
