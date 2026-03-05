@@ -227,6 +227,13 @@ echo '<VERIFICATION_TOKEN>' | npx wrangler secret put VERIFY_TOKEN --config .cla
 ```
 Re-run preflight to confirm it passes. This step is required — the worker rejects all webhook events without a valid VERIFY_TOKEN.
 
-**If hooks were just installed in this session:** tell the user:
+### Completion message
 
-> Setup complete. **Exit and restart Claude Code**, then run `/handoff` to enter handoff mode. (The hooks injecting session context run at startup — they aren't active until the next session.)
+**Keep it short.** After preflight passes, print only:
+
+1. A one-line status: "Setup complete." or "Preflight passed."
+2. One sentence for what to do next:
+   - Claude Code / OpenCode (plugin just installed): "Exit and reopen, then run `/handoff`."
+   - Claude Code (hooks already existed, no restart needed): "Run `/handoff` to start."
+
+Do **not** summarize what was configured, explain what each step did, or repeat values already shown in the summary table. The user has seen the table — they don't need a prose recap.
