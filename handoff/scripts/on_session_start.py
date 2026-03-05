@@ -69,7 +69,10 @@ def main():
     # process tree depth (hook may be spawned via shell wrapper or directly).
     if session_id:
         try:
-            sessions_dir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "handoff-sessions")
+            sessions_dir = os.path.join(
+                os.environ.get("TMPDIR") or f"/private/tmp/claude-{os.getuid()}",
+                "handoff-sessions",
+            )
             os.makedirs(sessions_dir, exist_ok=True)
             # Collect ancestor PIDs (up to 3 levels: us → shell? → Claude Code → ...)
             ancestors = []
