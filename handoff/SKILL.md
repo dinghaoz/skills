@@ -247,122 +247,32 @@ All handoff commands work the same: "handback" to exit, heartbeats for long task
 
 ## Entering Handoff Mode
 
-### Setup: Resolve environment variables
+### Steps A–D: enter_handoff.py
 
-The SessionStart hook normally injects `HANDOFF_PROJECT_DIR` and `HANDOFF_SESSION_ID`, but they may be missing if hooks were just installed this session. Before Step A, ensure both are set:
-
-```bash
-# Derive project dir from Claude's own env var, or cwd as fallback
-export HANDOFF_PROJECT_DIR="${HANDOFF_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
-
-# Generate a session ID if not already set
-export HANDOFF_SESSION_ID="${HANDOFF_SESSION_ID:-$(python3 -c 'import uuid; print(uuid.uuid4())')}"
-```
-
-Set these once and pass them to **every** subsequent `handoff_ops.py` / `start_and_wait.py` / `wait_for_reply.py` call in this session (prefix each Bash command with `HANDOFF_PROJECT_DIR="..." HANDOFF_SESSION_ID="..."`).
-
-### Step A: Check if this session already has a handoff
+Run the single entry-point script. It handles env resolution, session-check, group discovery, auto-selection, and activation in one shot:
 
 ```bash
-python3 $SKILL_SCRIPTS/handoff_ops.py session-check
+python3 $SKILL_SCRIPTS/enter_handoff.py --session-model '${session_model}'
 ```
 
-If `already_active` is true, this session already has a handoff.
+Pass `--mode no-ask` or `--mode new` when the user explicitly requests those modes.
 
-- If the user explicitly asks for `no ask` / `auto`, skip prompts and continue with the current chat (Step E).
-- Otherwise, ask one quick choice:
-  1) Continue current handoff chat
-  2) Re-select chat (go to Step B/C)
+**Parse the output:**
 
-Default recommended choice is **Continue current handoff chat**.
-
-### Step B: Discover groups and check active sessions
-
-```bash
-python3 $SKILL_SCRIPTS/handoff_ops.py discover
-```
-
-### Step C: Decision tree
-
-Parse the JSON output. Let N = number of groups.
-
-Before asking the user to choose a group, enforce completeness:
-
-1. Build options directly from the returned `groups` array (no manual re-typing from memory).
-2. Verify option count matches data (`len(group_options) == N`, plus one extra only when adding "Create new").
-3. Include each group's `chat_id` in the option description so missing entries are obvious.
-4. If counts do not match, re-run Step B and rebuild options.
-
-**If N == 0:** Create a new group directly (no prompt). Run:
-
-```bash
-python3 $SKILL_SCRIPTS/handoff_ops.py create-group
-```
-
-Then continue to Step D and activate with the returned `chat_id`.
-
-If `N >= 1`, split into three explicit modes:
-
-**Case 1 — Default mode (normal behavior):**
-
-Only use this case when the user did **not** explicitly request no-ask/auto/new.
-
-1. If there is at least one **unoccupied** existing group (`active == false`), auto-pick the unoccupied group with the **most recent** `last_checked` (if available). If `last_checked` is missing, fall back to `activated_at` for ordering. If both are missing for all unoccupied groups, fall back to first unoccupied group.
-2. If all groups are occupied, use **AskUserQuestion** to choose between:
-   - taking over one occupied group, or
-   - creating a new group.
-
-Do **not** silently switch from default mode to no-ask mode because of tool/runtime limitations.
-
-When all groups are occupied and you ask in step 2, if there are multiple occupied groups, mark the group with the **earliest** `last_checked` as `(Recommended)`.
-
-When asking in step 2, build options from occupied groups plus "Create new":
-
-- For each group: label = group name with `[active]`. Description = chat_id (for reference).
-- Last option: label = "Create new", description = "Create a new handoff group".
-
-On selection:
-
-- **"Create new":** Run the create script above and pass existing names to keep numbering stable:
-  `python3 $SKILL_SCRIPTS/handoff_ops.py create-group --existing-names-json '<JSON_ARRAY_OF_GROUP_NAMES>'`.
-  Then continue to Step D and activate with the returned `chat_id`.
-- **Selected active group:** Run takeover flow (Step D-takeover), then use it.
-
-**Case 2 — No-ask mode (explicit user request):**
-
-If the user's request includes terms like `no ask`, `don't ask`, `no prompt`, `auto`, `pick automatically`, or equivalent, do not ask any selection questions in this step. Apply deterministic selection:
-
-1. If there is at least one **unoccupied** existing group (`active == false`), auto-pick the unoccupied group with the **most recent** `last_checked` (if available). If `last_checked` is missing, fall back to `activated_at` for ordering. If both are missing for all unoccupied groups, fall back to first unoccupied group.
-2. If all existing groups are occupied, create a new group.
-
-In no-ask mode, never run takeover prompts/decisions.
-
-No-ask mode must be explicit user intent; do not infer it from environment constraints.
-
-**Case 3 — New mode (explicit user request):**
-
-If the user's request includes terms like `new`, `new chat`, `new group`, `always new`, or equivalent, always create a new handoff group (even if idle groups exist):
-
-`python3 $SKILL_SCRIPTS/handoff_ops.py create-group --existing-names-json '<JSON_ARRAY_OF_GROUP_NAMES>'`
-
-Then continue to Step D and activate with the returned `chat_id`.
-
-### Step D: Activate session
-
-Register the session with the chosen `chat_id`:
-
-```bash
-python3 $SKILL_SCRIPTS/handoff_ops.py activate --chat-id '<CHAT_ID>' --session-model '${session_model}'
-```
-
-**If taking over an active group**, run atomic takeover (claim + old-owner handoff signal in one deterministic step):
-
-1. Send takeover signal to the worker so the old session's `wait_for_reply.py` exits:
-   ```bash
-   python3 $SKILL_SCRIPTS/handoff_ops.py takeover --chat-id '<CHAT_ID>' --session-model '${session_model}'
-   ```
-2. Do **not** run the separate activate step after takeover. The takeover command already claims ownership for the current session.
-   - If takeover returns `ok: false`, another session won concurrently. Re-run Step B/C and choose again (or create new).
+- **`"status": "ready"`** — activation complete. `chat_id`, `session_id`, and `project_dir` are in the output. Proceed to Step E.
+- **`"status": "already_active"`** — this session already has a live handoff.
+  - If the user asked for `no ask` / `auto`: continue with the current chat (Step E).
+  - Otherwise: ask — continue current chat, or re-run with `--mode new` to get a fresh group.
+- **`"status": "choose"`** — all groups are occupied; Claude must ask the user:
+  - Build options from the `groups` array (each group: label = name `[active]`, description = chat_id).
+  - Add a "Create new" option.
+  - On selection:
+    - **"Create new"**: `python3 $SKILL_SCRIPTS/handoff_ops.py create-group --existing-names-json '<JSON>'` then `activate`.
+    - **Occupied group**: run takeover then skip activate:
+      ```bash
+      python3 $SKILL_SCRIPTS/handoff_ops.py takeover --chat-id '<CHAT_ID>' --session-model '${session_model}'
+      ```
+      If takeover returns `ok: false`, re-run `enter_handoff.py` and choose again.
 
 ### Step E: Silence + send initial message + enter loop
 
