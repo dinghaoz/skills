@@ -180,7 +180,7 @@ def check_hooks():
         pass  # Global-only install, no project dir yet
 
     if [h for h in required if h not in found]:
-        return False, "Hooks not installed. Run /handoff init."
+        return False, "Handoff is not initialized. Run /handoff init."
     return True, None
 
 
