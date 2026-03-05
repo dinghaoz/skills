@@ -67,27 +67,27 @@ Print summary and stop.
 
 ## Deinit (`/handoff deinit`)
 
-Reverse of `/handoff init`: remove installed hooks or plugin files, then optionally delete config.
+Reverse of `/handoff init`: auto-detect what's installed, remove it, then optionally delete config and the skill.
 
-1. Confirm with user.
+1. **Detect installed components:**
+   - **Claude Code hooks:** Scan `.claude/settings.json` and `.claude/settings.local.json` for hook entries whose `command` contains `handoff/scripts/`. Note which files have them.
+   - **OpenCode plugin files:** Check whether `.opencode/plugins/handoff.ts`, `.opencode/scripts/permission_bridge.py`, `.opencode/scripts/handoff_tool_forwarding.js` exist.
 
-**Claude Code path:**
-2. Remove all handoff hooks (`PreToolUse`, `Notification`, `PermissionRequest`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `SessionStart`, `SessionEnd`) from `.claude/settings.json` and `.claude/settings.local.json` via `Edit` tool. For each event type, remove only entries whose `command` contains `handoff/scripts/`. Leave non-handoff entries untouched.
+2. **Confirm and remove.** List what was found and ask the user to confirm. If nothing is found, skip to step 3.
 
-**OpenCode path:**
-2. Restore plugin files back to the skill's assets directory, then remove from `.opencode/`:
-   ```bash
-   SKILL=".claude/skills/handoff"
-   mkdir -p "$SKILL/assets/opencode/plugins" "$SKILL/assets/opencode/scripts"
-   cp .opencode/plugins/handoff.ts "$SKILL/assets/opencode/plugins/"
-   cp .opencode/scripts/permission_bridge.py "$SKILL/assets/opencode/scripts/"
-   cp .opencode/scripts/handoff_tool_forwarding.js "$SKILL/assets/opencode/scripts/"
-   rm -f .opencode/plugins/handoff.ts \
-         .opencode/scripts/permission_bridge.py \
-         .opencode/scripts/handoff_tool_forwarding.js
-   ```
+   - **Remove Claude Code hooks:** For each settings file with handoff hooks, remove only entries whose `command` contains `handoff/scripts/`. Leave non-handoff entries untouched. Use the `Edit` tool.
+   - **Remove OpenCode plugin files** (restore to skill assets first, then delete):
+     ```bash
+     SKILL=".claude/skills/handoff"
+     mkdir -p "$SKILL/assets/opencode/plugins" "$SKILL/assets/opencode/scripts"
+     cp .opencode/plugins/handoff.ts "$SKILL/assets/opencode/plugins/"
+     cp .opencode/scripts/permission_bridge.py "$SKILL/assets/opencode/scripts/"
+     cp .opencode/scripts/handoff_tool_forwarding.js "$SKILL/assets/opencode/scripts/"
+     rm -f .opencode/plugins/handoff.ts \
+           .opencode/scripts/permission_bridge.py \
+           .opencode/scripts/handoff_tool_forwarding.js
+     ```
 
-**Both paths:**
 3. Ask: "Also delete `~/.handoff/config.json`? (y/N)" — default **No**. If yes:
    ```bash
    python3 .claude/skills/handoff/scripts/handoff_ops.py deinit-config
