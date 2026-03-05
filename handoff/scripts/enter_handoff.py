@@ -92,7 +92,7 @@ def _resolve_env():
 
     # HANDOFF_SESSION_ID — find session file with matching ancestor PIDs
     if not os.environ.get("HANDOFF_SESSION_ID"):
-        sessions_dir = os.path.expanduser("~/.handoff/sessions")
+        sessions_dir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "handoff-sessions")
         if os.path.isdir(sessions_dir):
             try:
                 my_ancestors = _get_ancestors()
