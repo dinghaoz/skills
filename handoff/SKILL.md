@@ -191,11 +191,7 @@ Print the output to the user. This shows all configured values, hook status, and
 
 ### For `/handoff` (no args)
 
-If the script exits with a non-zero code, show the errors to the user and use **AskUserQuestion** with two options:
-- **"Run setup wizard"** — read `SKILL-setup.md` and run the Guided Setup now
-- **"Exit"** — stop here; the user will fix it manually
-
-Do NOT enter Handoff mode regardless of which option is chosen.
+If the script exits with a non-zero code, tell the user: **"Handoff isn't set up yet. Run `/handoff init` to get started."** Offer to run setup now or exit. Do NOT enter Handoff mode regardless.
 
 ### For `/handoff init`
 
@@ -267,6 +263,7 @@ Each Bash call runs in a new subprocess — shell exports do not persist between
 
 **Status values:**
 
+- **`"status": "hooks_pending"`** — hooks were just installed but not yet loaded. **Stop immediately.** Tell the user: "Hooks were just installed. Exit and restart Claude Code, then run `/handoff`." Do NOT proceed.
 - **`"status": "restart_required"`** — session env vars are missing (hooks haven't run yet). **Stop immediately.** Tell the user: "The session hooks haven't run yet. Please exit and restart Claude Code, then run `/handoff` again." Do NOT attempt to work around this or generate the missing values manually.
 - **`"status": "ready"`** — activation complete. Extract `chat_id`, `session_id`, `project_dir`. Proceed to Step E.
 - **`"status": "already_active"`** — this session already has a live handoff.
@@ -580,7 +577,23 @@ Keep the message concise — Lark has size limits. For long output, summarize an
 - **"Send XX to me" = file attachment.** When the user asks to send something that is a file (e.g. "把 SKILL.md 发给我"), upload it as a Lark file attachment using `lark_im.upload_file()` and send as a file message. Do NOT paste the file content as text.
 - **Commit hash links.** When mentioning commit hashes in Lark messages, format them as clickable links to the GitHub commit page: [`hash`](https://github.com/<org>/<repo>/commit/<hash>). Derive the org/repo from `git remote get-url origin`.
 - **Reaction routing.** When `send_to_group.py` sends a message, it automatically registers the message with the worker via `register_message()`. This allows the worker to route emoji reactions on bot messages back to the handoff session. Reactions arrive as `msg_type: "reaction"` with `text` containing the emoji type (e.g. `"THUMBSUP"`). No special handling is needed — this works automatically.
-- **Sticker replies.** You can reply to a user's message with a sticker when it feels natural — e.g. a thumbs-up sticker to acknowledge, a celebration sticker when a task completes, etc. Use `lark_im.reply_sticker(token, message_id, file_key)`. Common sticker file_keys can be discovered from sticker messages the user sends (the `file_key` is included in the message payload). Use stickers sparingly — only when it adds warmth to the interaction.
+- **Sticker & reaction etiquette.** Be natural, never robotic.
+  - **Receiving a reaction** (e.g. 👍 on your message): this is just acknowledgment — usually **no reply needed**. Never echo the same sticker back.
+  - **Receiving a sticker message**: respond based on context. A thumbs-up after you reported completion means "good job, carry on" — silence or continuing work is the right answer. Only reply if there's something meaningful to say.
+  - **Sending reactions proactively**: react to the user's messages to show you're engaged. Use `lark_im.add_reaction(token, message_id, emoji_type)`. Common types and when to use them:
+    - `THUMBSUP` — acknowledge a request, confirm understanding
+    - `DONE` — task completed successfully
+    - `MUSCLE` — about to tackle something challenging
+    - `OK` — simple acknowledgment, got it
+    - `LAUGH` / `LOL` — lighthearted moment, something funny
+    - `FACEPALM` — you made a silly mistake
+    - `THINKING` — analyzing a complex problem
+    - `LOVE` / `FINGERHEART` — user did something helpful or kind
+    - `APPLAUSE` — celebrating a milestone or good news
+    - `SOB` — something went wrong, empathizing with frustration
+    - `JIAYI` (+1) — agree with the user's suggestion
+  - **Sending sticker replies**: use `lark_im.reply_sticker(token, message_id, file_key)` for richer expression. Discover file_keys from sticker messages the user sends (the `file_key` is in the message payload). Cache and reuse ones you've seen.
+  - Use stickers/reactions sparingly but naturally. Matching sticker-for-sticker is cringe. A well-timed reaction says more than a text reply.
 - The workspace ID is computed automatically by all scripts via `lark_im.get_workspace_id()`. It identifies the physical code location (machine + folder path).
 
 ## Architecture
