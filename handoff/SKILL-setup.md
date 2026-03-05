@@ -12,6 +12,32 @@ When invoked via `/handoff init`: run ALL steps. For each step where a value alr
 
 **Deferred save:** During Steps 1–4, do NOT write to the config file or hooks files. Collect all values in memory. Infrastructure side effects (worker deploy, wrangler secrets) happen inline since they can't be deferred. After Step 4, show a summary and ask for confirmation before applying (see "After setup").
 
+## Before you begin: load existing values
+
+**Before** starting Step 1, run this command to load any existing config values. This handles both the nested `ims.lark` format and the legacy flat format:
+
+```bash
+python3 -c "
+import sys, json, os
+for p in ['.claude/skills/handoff/scripts', os.path.expanduser('~/.claude/skills/handoff/scripts')]:
+    if os.path.exists(p):
+        sys.path.insert(0, p)
+        break
+import lark_im
+cfg = lark_im._load_config() or {}
+im = lark_im._resolve_im_config(cfg) or {}
+print(json.dumps({
+    'worker_url': cfg.get('worker_url', ''),
+    'worker_api_key': cfg.get('worker_api_key', ''),
+    'app_id': im.get('app_id', ''),
+    'app_secret': im.get('app_secret', ''),
+    'email': im.get('email', ''),
+}))
+"
+```
+
+Store the output JSON as `existing`. Use these values when showing "Keep existing" options in each step. A non-empty string means the value exists.
+
 ## Step 1: worker_url + worker_api_key
 
 The worker has no dependency on the Lark app, so deploy it first. The URL is needed when configuring the Lark app in Step 2. The `worker_url` and `worker_api_key` are always set together as a pair.
@@ -108,24 +134,29 @@ Tell the user: **"Plugin installed. Please exit and reopen OpenCode — plugins 
 
 ---
 
-**Claude Code users:** Install hooks into `.claude/settings.json` or `.claude/settings.local.json`.
+**Claude Code users:** Install hooks into a Claude settings file.
 
-Read `.claude/skills/handoff/hooks.json` for the canonical hook definitions.
+**Detect install scope first:**
 
-**Resolve hook paths by install scope:**
+- **Project install**: `.claude/skills/handoff/hooks.json` exists in the current directory → hooks.json is here, settings targets are `.claude/settings.json` / `.claude/settings.local.json`.
+- **Global install**: only `~/.claude/skills/handoff/hooks.json` exists → hooks.json is there, settings targets are `~/.claude/settings.json` / `~/.claude/settings.local.json`.
 
-- **Project install** (`.claude/skills/handoff/hooks.json` exists): use hook command strings from `hooks.json` as-is. Each command uses `git rev-parse --absolute-git-dir` to locate the main project's `.git` directory and resolve scripts relative to it. This works correctly from both the main worktree and any git worktree (e.g. created with `/mkwt`). If the script file doesn't exist, the hook exits 0 silently — safe to run from any project.
-- **Global install** (only `~/.claude/skills/handoff/hooks.json` exists): replace each entire `command` string with a simple literal path call. Extract the script filename from the `command` in `hooks.json`, then construct: `python3 "<expanded-HOME>/.claude/skills/handoff/scripts/<script-name>.py"`. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the commands contain literal paths that work in any project.
+Use the scope-appropriate paths throughout the rest of this step.
+
+**Resolve hook command strings by scope:**
+
+- **Project install**: use hook command strings from `hooks.json` as-is. Each command uses `git rev-parse --absolute-git-dir` to locate the main project's `.git` directory and resolve scripts relative to it. This works correctly from both the main worktree and any git worktree (e.g. created with `/mkwt`). If the script file doesn't exist, the hook exits 0 silently — safe to run from any project.
+- **Global install**: replace each entire `command` string with a literal path. Extract the script filename from the `command` in `hooks.json`, then construct: `python3 "<expanded-HOME>/.claude/skills/handoff/scripts/<script-name>.py"`. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the commands contain literal paths that work in any project.
 
 **Determine target file:**
-1. Read both `.claude/settings.json` and `.claude/settings.local.json` (missing files count as empty).
+1. Read both candidate settings files for the detected scope (missing files count as empty).
 2. Check whether each file has a `hooks` key with any entries (handoff or otherwise).
 3. Choose the target file:
    - Only one file has a `hooks` key → use that file (no need to ask).
    - Both files have a `hooks` key → prefer `settings.json`; if that would be surprising (e.g. the only hooks are in `settings.local.json`), use **AskUserQuestion** to let the user pick.
    - Neither file has a `hooks` key → use **AskUserQuestion** with two options:
-     - **"Add to settings.json (shared, committed to git)"**
-     - **"Add to settings.local.json (this machine only, not committed)"**
+     - **"Add to settings.json (shared, committed to git)"** — for project install
+     - **"Add to settings.local.json (this machine only, not committed)"** — preferred for global install
 
 Remember the chosen file — do NOT apply yet.
 
@@ -168,7 +199,11 @@ Apply example:
 
 ```bash
 python3 -c "
-import sys; sys.path.insert(0, '.claude/skills/handoff/scripts')
+import sys, os
+for p in ['.claude/skills/handoff/scripts', os.path.expanduser('~/.claude/skills/handoff/scripts')]:
+    if os.path.exists(p):
+        sys.path.insert(0, p)
+        break
 import lark_im
 lark_im.save_credentials(
     worker_url='<WORKER_URL>',
