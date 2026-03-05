@@ -181,14 +181,22 @@ def run_permission_poll_loop(
     timeout_seconds,
     log_fn,
     operator_open_id="",
+    approver_ids=None,
 ):
     """Poll replies until a decision is reached.
 
     Returns tuple: (decision, last_time)
     where decision is one of: "allow", "always", "deny".
 
-    operator_open_id: if non-empty, only accept decisions from this user.
+    approver_ids: set of open_ids that can approve/deny. If provided,
+        only accept decisions from these users.
+    operator_open_id: legacy param — used to build approver_ids if
+        approver_ids is not provided.
     """
+    # Build approver set: explicit param > legacy operator_open_id
+    if approver_ids is None:
+        approver_ids = {operator_open_id} if operator_open_id else set()
+
     deadline = None if timeout_seconds <= 0 else time.time() + timeout_seconds
     backoff = 0
     cursor = since or "0"
@@ -217,11 +225,11 @@ def run_permission_poll_loop(
             if not replies:
                 continue
 
-            # Filter to operator only (if configured)
-            if operator_open_id:
+            # Filter to approved senders only
+            if approver_ids:
                 replies = [
                     r for r in replies
-                    if r.get("sender_id") == operator_open_id
+                    if r.get("sender_id") in approver_ids
                 ]
                 if not replies:
                     continue

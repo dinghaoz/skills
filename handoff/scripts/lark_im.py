@@ -653,6 +653,16 @@ def remove_guests(session_id, open_ids):
     return removed, remaining
 
 
+def get_member_roles(session_id):
+    """Get a mapping of open_id → role for all session guests.
+
+    Returns dict like {"ou_xxx": "coowner", "ou_yyy": "guest"}.
+    Entries without a "role" field default to "guest".
+    """
+    guests = get_guests(session_id)
+    return {g["open_id"]: g.get("role", "guest") for g in guests}
+
+
 def set_working_message(session_id, message_id):
     """Store the "Working..." card message_id for a session."""
     conn = _get_db()

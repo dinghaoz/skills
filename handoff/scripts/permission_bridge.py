@@ -185,9 +185,14 @@ def main():
     worker_url = context["worker_url"]
     _log(f"active: chat_id={chat_id}")
 
-    # Resolve operator_open_id from session for sender validation
+    # Resolve operator_open_id and coowner approvers from session
     session = lark_im.get_session(session_id)
     operator_open_id = session.get("operator_open_id", "") if session else ""
+    approver_ids = {operator_open_id} if operator_open_id else set()
+    if session:
+        for g in session.get("guests") or []:
+            if g.get("role") == "coowner":
+                approver_ids.add(g["open_id"])
 
     # Generate nonce, ack stale replies, send card — all in one step.
     try:
@@ -223,7 +228,7 @@ def main():
         since="0",
         timeout_seconds=POLL_TIMEOUT,
         log_fn=warn,
-        operator_open_id=operator_open_id,
+        approver_ids=approver_ids,
     )
 
     _log(f"decision={decision}")

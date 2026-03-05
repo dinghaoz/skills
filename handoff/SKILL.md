@@ -360,35 +360,48 @@ Filter levels control PostToolUse forwarding to Lark:
 - **important** — forward Edit + Write only (skip Bash unless error)
 - **concise** — no PostToolUse forwarding (default)
 
-**Guest commands** (sidecar mode only): The owner can manage a guest whitelist — other group members who can interact with the bot at reduced privilege. Detect these commands flexibly (natural language, any language):
+**Guest & coowner commands**: The owner can manage a whitelist of members who can interact with the bot. This works in both regular and sidecar mode. Detect these commands flexibly (natural language, any language):
 
-- **Add guests**: Owner mentions users with intent to grant access. Examples: "add @jack @alice as guest", "@jack 和 @alice 可以和你对话", "let @bob talk to you". Extract `open_id` and `name` from the `mentions` array in the message, then:
+- **Add guests**: Owner mentions users with intent to grant guest access. Examples: "add @jack @alice as guest", "@jack 和 @alice 可以和你对话", "let @bob talk to you". Extract `open_id` and `name` from the `mentions` array in the message, then:
   ```bash
   python3 $SKILL_SCRIPTS/handoff_ops.py guest-add --guests-json '[{"open_id":"ou_xxx","name":"Jack"},{"open_id":"ou_yyy","name":"Alice"}]'
   ```
   Send confirmation to Lark listing who was added.
 
-- **Remove guests**: Owner mentions users with intent to revoke access. Examples: "remove @jack", "@alice 不要了", "revoke @bob". Extract `open_id` from mentions, then:
+- **Add coowners**: Owner mentions users with intent to grant coowner access. Examples: "add @alice as coowner", "@alice 是 coowner", "make @bob a coowner". Extract `open_id` and `name` from mentions, then:
+  ```bash
+  python3 $SKILL_SCRIPTS/handoff_ops.py guest-add --role coowner --guests-json '[{"open_id":"ou_xxx","name":"Alice"}]'
+  ```
+  Send confirmation to Lark listing who was added as coowner.
+
+- **Remove members**: Owner mentions users with intent to revoke access. Examples: "remove @jack", "@alice 不要了", "revoke @bob". Extract `open_id` from mentions, then:
   ```bash
   python3 $SKILL_SCRIPTS/handoff_ops.py guest-remove --open-ids-json '["ou_xxx"]'
   ```
   Send confirmation to Lark listing who was removed.
 
-- **List guests**: Owner says "guests" or "sidecar guests". Run:
+- **List members**: Owner says "guests", "members", or "who has access". Run:
   ```bash
   python3 $SKILL_SCRIPTS/handoff_ops.py guest-list
   ```
-  Send the list to Lark.
+  Send the list to Lark (shows role for each member).
+
+**Coowner privilege rules**: When a reply has `"privilege": "coowner"`, treat it the same as owner:
+- **Same permissions as owner**: shell, git, file edits, full project access
+- **Permission requests**: Coowners can approve/deny permission cards (same as owner)
+- **Owner override**: Owner can override coowner decisions. If both respond to a permission card, owner's decision takes priority.
 
 **Guest privilege rules**: When a reply has `"privilege": "guest"`, treat it as a low-privilege request:
 - **Allowed**: Ask questions, get explanations, create new files under the temp folder (`$TMPDIR`), modify temp files
 - **NOT allowed**: Run shell commands, git operations, read/modify existing project files, access secrets (.env, credentials, API keys), create files under the project directory
-- **Permission requests**: Permission cards (Approve/Deny) are only processed from the owner. Guest button clicks are ignored (filtered by `operator_open_id` in the permission bridge).
+- **Permission requests**: Permission cards (Approve/Deny) are only processed from the owner and coowners. Guest button clicks are ignored.
 - **Owner override**: Owner commands always take priority. If the owner says "stop", halt any guest-requested work immediately.
 - When replying to a guest, use `--mention-user-id` on `send_and_wait.py` to @-mention them:
   ```bash
   python3 $SKILL_SCRIPTS/send_and_wait.py '<response>' --mention-user-id '<guest_open_id>'
   ```
+
+**Sidecar vs regular mode**: The ONLY difference between sidecar and regular mode is the bot-interaction filter (`filter_bot_interactions`). In sidecar mode, messages must be bot-directed (@-mention, reply to bot, or reaction/sticker). In regular mode, all messages from allowed senders are processed directly. Guest/coowner support works identically in both modes.
 
 **Handback command**: If any reply text matches **handback** or **hand back** (case-insensitive), exit Handoff mode. The text may optionally include the word **dissolve** (e.g. "handback dissolve", "hand back dissolve") to also dissolve (delete) the chat group after ending the handoff.
 

@@ -307,6 +307,97 @@ class PollLoopTest(unittest.TestCase):
         )
         self.assertEqual(decision, "deny")
 
+    def test_poll_loop_approver_ids_accepts_coowner(self):
+        """Coowner in approver_ids can approve permission requests."""
+        def poll_fn(chat_id, since):
+            return {
+                "replies": [{"text": "yes", "create_time": "7007",
+                             "message_id": "m7", "sender_id": "co1"}],
+                "takeover": False,
+                "error": None,
+            }
+
+        decision, ts = permission_core.run_permission_poll_loop(
+            poll_fn=poll_fn,
+            ack_fn=lambda chat_id, before: None,
+            record_received_fn=lambda **kwargs: None,
+            set_last_checked_fn=lambda sid, t: None,
+            on_deny_fn=lambda: None,
+            chat_id="chat-co",
+            session_id="s-co",
+            since="0",
+            timeout_seconds=5,
+            log_fn=None,
+            approver_ids={"op1", "co1"},
+        )
+        self.assertEqual(decision, "allow")
+
+    def test_poll_loop_approver_ids_rejects_guest(self):
+        """Guest NOT in approver_ids cannot approve permission requests."""
+        call_count = {"n": 0}
+
+        def poll_fn(chat_id, since):
+            call_count["n"] += 1
+            if call_count["n"] <= 1:
+                # Guest tries to approve
+                return {
+                    "replies": [{"text": "yes", "create_time": "8008",
+                                 "message_id": "m8", "sender_id": "guest1"}],
+                    "takeover": False,
+                    "error": None,
+                }
+            # Then operator approves
+            return {
+                "replies": [{"text": "yes", "create_time": "8009",
+                             "message_id": "m9", "sender_id": "op1"}],
+                "takeover": False,
+                "error": None,
+            }
+
+        decision, ts = permission_core.run_permission_poll_loop(
+            poll_fn=poll_fn,
+            ack_fn=lambda chat_id, before: None,
+            record_received_fn=lambda **kwargs: None,
+            set_last_checked_fn=lambda sid, t: None,
+            on_deny_fn=lambda: None,
+            chat_id="chat-g",
+            session_id="s-g",
+            since="0",
+            timeout_seconds=5,
+            log_fn=None,
+            approver_ids={"op1"},
+        )
+        # Guest's "yes" was ignored, operator's "yes" was accepted
+        self.assertEqual(decision, "allow")
+        self.assertEqual(ts, "8009")
+        self.assertEqual(call_count["n"], 2)
+
+    def test_poll_loop_approver_ids_backward_compat(self):
+        """When approver_ids is None, falls back to operator_open_id."""
+        def poll_fn(chat_id, since):
+            return {
+                "replies": [{"text": "yes", "create_time": "9009",
+                             "message_id": "m10", "sender_id": "op1"}],
+                "takeover": False,
+                "error": None,
+            }
+
+        decision, ts = permission_core.run_permission_poll_loop(
+            poll_fn=poll_fn,
+            ack_fn=lambda chat_id, before: None,
+            record_received_fn=lambda **kwargs: None,
+            set_last_checked_fn=lambda sid, t: None,
+            on_deny_fn=lambda: None,
+            chat_id="chat-bc",
+            session_id="s-bc",
+            since="0",
+            timeout_seconds=5,
+            log_fn=None,
+            operator_open_id="op1",
+            # approver_ids not passed (defaults to None)
+        )
+        self.assertEqual(decision, "allow")
+
     def test_poll_loop_error_uses_backoff(self):
         """Poll errors trigger exponential backoff then recover."""
         logs = []

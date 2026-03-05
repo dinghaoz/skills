@@ -37,15 +37,16 @@ def filter_by_operator(replies, operator_open_id):
     return [r for r in replies if r.get("sender_id") == operator_open_id]
 
 
-def filter_by_allowed_senders(replies, operator_open_id, guest_ids):
-    """Filter replies to operator + whitelisted guests.
+def filter_by_allowed_senders(replies, operator_open_id, member_roles):
+    """Filter replies to operator + whitelisted members.
 
-    Tags each reply with "privilege": "owner" or "guest".
-    Applied in sidecar mode when guests are configured.
+    member_roles: dict mapping open_id → role ("guest" or "coowner").
+    Tags each reply with "privilege": "owner", "coowner", or "guest".
+    Applied when members are configured (both regular and sidecar mode).
     """
     allowed = {operator_open_id} if operator_open_id else set()
-    guest_set = set(guest_ids or [])
-    allowed |= guest_set
+    roles = dict(member_roles or {})
+    allowed |= set(roles)
     if not allowed:
         return replies
     filtered = []
@@ -55,8 +56,8 @@ def filter_by_allowed_senders(replies, operator_open_id, guest_ids):
             continue
         if sid == operator_open_id:
             r = dict(r, privilege="owner")
-        elif sid in guest_set:
-            r = dict(r, privilege="guest")
+        elif sid in roles:
+            r = dict(r, privilege=roles[sid])
         filtered.append(r)
     return filtered
 
@@ -170,7 +171,7 @@ def main():
     bot_open_id = session.get("bot_open_id", "")
     sidecar_mode = session.get("sidecar_mode", False)
     guests = session.get("guests") or []
-    guest_ids = {g["open_id"] for g in guests} if guests else set()
+    member_roles = {g["open_id"]: g.get("role", "guest") for g in guests} if guests else {}
 
     # Apply model-based default timeout if not explicitly provided
     if args.timeout is None:
@@ -208,9 +209,9 @@ def main():
                     return
                 replies = result.get("replies", [])
                 if replies:
-                    if sidecar_mode and guest_ids:
+                    if member_roles:
                         replies = filter_by_allowed_senders(
-                            replies, operator_open_id, guest_ids)
+                            replies, operator_open_id, member_roles)
                     else:
                         replies = filter_by_operator(replies, operator_open_id)
                 if sidecar_mode and replies:
@@ -256,9 +257,9 @@ def main():
                 # Ack processed replies via HTTP (WS already acks inline)
                 last_checked = replies[-1]["create_time"]
                 lark_im.ack_worker_replies(worker_url, chat_id, last_checked)
-                if sidecar_mode and guest_ids:
+                if member_roles:
                     replies = filter_by_allowed_senders(
-                        replies, operator_open_id, guest_ids)
+                        replies, operator_open_id, member_roles)
                 else:
                     replies = filter_by_operator(replies, operator_open_id)
                 if sidecar_mode:

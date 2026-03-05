@@ -82,9 +82,14 @@ def main():
     worker_url = context["worker_url"]
     api_key = lark_im.load_api_key() or ""
 
-    # Resolve operator_open_id from session for sender validation
+    # Resolve operator_open_id and coowner approvers from session
     session = lark_im.get_session(session_id)
     operator_open_id = session.get("operator_open_id", "") if session else ""
+    approver_ids = {operator_open_id} if operator_open_id else set()
+    if session:
+        for g in session.get("guests") or []:
+            if g.get("role") == "coowner":
+                approver_ids.add(g["open_id"])
 
     _log(f"chat_id={chat_id}, worker_url={worker_url}, operator={operator_open_id}")
 
@@ -150,7 +155,7 @@ def main():
         since="0",
         timeout_seconds=300,
         log_fn=_log,
-        operator_open_id=operator_open_id,
+        approver_ids=approver_ids,
     )
 
     _log(f"decision={decision}")

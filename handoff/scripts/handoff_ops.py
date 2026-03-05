@@ -1359,9 +1359,10 @@ def cmd_diag(args):
 
 
 def cmd_guest_add(args):
-    """Add guests to the sidecar whitelist.
+    """Add members to the guest/coowner whitelist.
 
     --guests-json: JSON array of [{"open_id": "ou_xxx", "name": "Alice"}, ...]
+    --role: Role to assign — "guest" (default) or "coowner".
     """
     session_id = os.environ.get("HANDOFF_SESSION_ID", "")
     if not session_id:
@@ -1375,6 +1376,9 @@ def cmd_guest_add(args):
     if not new_guests:
         _jprint({"ok": False, "error": "no guests provided"})
         return 1
+    role = getattr(args, "role", "guest") or "guest"
+    for g in new_guests:
+        g["role"] = role
     added, current = lark_im.add_guests(session_id, new_guests)
     _jprint({
         "ok": True,
@@ -1384,7 +1388,7 @@ def cmd_guest_add(args):
 
 
 def cmd_guest_remove(args):
-    """Remove guests from the sidecar whitelist.
+    """Remove members from the whitelist.
 
     --open-ids-json: JSON array of open_id strings to remove.
     """
@@ -1409,7 +1413,7 @@ def cmd_guest_remove(args):
 
 
 def cmd_guest_list(args):
-    """List the current sidecar guest whitelist."""
+    """List the current guest/coowner whitelist."""
     session_id = os.environ.get("HANDOFF_SESSION_ID", "")
     if not session_id:
         _jprint({"ok": False, "error": "HANDOFF_SESSION_ID not set"})
@@ -1591,6 +1595,7 @@ def build_parser():
 
     s = sub.add_parser("guest-add")
     s.add_argument("--guests-json", required=True)
+    s.add_argument("--role", choices=["guest", "coowner"], default="guest")
     s.set_defaults(func=cmd_guest_add)
 
     s = sub.add_parser("guest-remove")

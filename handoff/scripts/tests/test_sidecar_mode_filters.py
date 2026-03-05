@@ -489,6 +489,27 @@ class FilterChainIntegrationTest(unittest.TestCase):
         # In non-sidecar mode, no bot filter is applied
         self.assertEqual(after_op[0]["text"], "hello")
 
+    def test_non_sidecar_with_guests_no_bot_filter(self):
+        """In regular mode with guests, sender filter applies but bot filter does not."""
+        replies = [
+            {"sender_id": "op1", "text": "owner msg"},
+            {"sender_id": "g1", "text": "guest msg"},
+            {"sender_id": "co1", "text": "coowner msg"},
+            {"sender_id": "stranger", "text": "excluded"},
+        ]
+        member_roles = {"g1": "guest", "co1": "coowner"}
+
+        # Sender filter applies (member_roles non-empty)
+        after_senders = wait_for_reply.filter_by_allowed_senders(
+            replies, "op1", member_roles)
+        self.assertEqual(len(after_senders), 3)  # excludes stranger
+        self.assertEqual(after_senders[0]["privilege"], "owner")
+        self.assertEqual(after_senders[1]["privilege"], "guest")
+        self.assertEqual(after_senders[2]["privilege"], "coowner")
+
+        # In regular mode (sidecar_mode=False), bot filter is NOT applied,
+        # so all 3 messages pass through without needing @-mentions.
+
 
 if __name__ == "__main__":
     unittest.main()

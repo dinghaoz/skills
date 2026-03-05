@@ -116,7 +116,7 @@ def main():
     bot_open_id = session.get("bot_open_id", "") if session else ""
     sidecar_mode = session.get("sidecar_mode", False) if session else False
     guests = (session.get("guests") or []) if session else []
-    guest_ids = {g["open_id"] for g in guests} if guests else set()
+    member_roles = {g["open_id"]: g.get("role", "guest") for g in guests} if guests else {}
     if not since:
         since = str(int(time.time() * 1000) - 5000)
 
@@ -132,9 +132,9 @@ def main():
                 return
             replies = result.get("replies", [])
             if replies:
-                if sidecar_mode and guest_ids:
+                if member_roles:
                     replies = wait_for_reply.filter_by_allowed_senders(
-                        replies, operator_open_id, guest_ids)
+                        replies, operator_open_id, member_roles)
                 else:
                     replies = wait_for_reply.filter_by_operator(replies, operator_open_id)
             if sidecar_mode and replies:
@@ -168,9 +168,9 @@ def main():
             if replies:
                 last_checked = replies[-1]["create_time"]
                 lark_im.ack_worker_replies(worker_url, chat_id, last_checked)
-                if sidecar_mode and guest_ids:
+                if member_roles:
                     replies = wait_for_reply.filter_by_allowed_senders(
-                        replies, operator_open_id, guest_ids)
+                        replies, operator_open_id, member_roles)
                 else:
                     replies = wait_for_reply.filter_by_operator(replies, operator_open_id)
                 if sidecar_mode:

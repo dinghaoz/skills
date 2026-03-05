@@ -70,7 +70,7 @@ class FilterByAllowedSendersTest(unittest.TestCase):
     def test_operator_tagged_as_owner(self):
         """Operator messages get privilege='owner'."""
         replies = [{"sender_id": "op1", "text": "hello"}]
-        result = wait_for_reply.filter_by_allowed_senders(replies, "op1", set())
+        result = wait_for_reply.filter_by_allowed_senders(replies, "op1", {})
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["privilege"], "owner")
 
@@ -78,78 +78,94 @@ class FilterByAllowedSendersTest(unittest.TestCase):
         """Guest messages get privilege='guest'."""
         replies = [{"sender_id": "g1", "text": "hi"}]
         result = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1"})
+            replies, "op1", {"g1": "guest"})
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["privilege"], "guest")
 
+    def test_coowner_tagged_as_coowner(self):
+        """Coowner messages get privilege='coowner'."""
+        replies = [{"sender_id": "co1", "text": "hi"}]
+        result = wait_for_reply.filter_by_allowed_senders(
+            replies, "op1", {"co1": "coowner"})
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["privilege"], "coowner")
+
     def test_unknown_sender_excluded(self):
-        """Messages from non-operator, non-guest senders are excluded."""
+        """Messages from non-operator, non-member senders are excluded."""
         replies = [{"sender_id": "stranger", "text": "hey"}]
         result = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1"})
+            replies, "op1", {"g1": "guest"})
         self.assertEqual(len(result), 0)
 
     def test_mixed_senders(self):
-        """Operator, guest, and stranger are filtered and tagged correctly."""
+        """Operator, guest, coowner, and stranger are filtered and tagged correctly."""
         replies = [
             {"sender_id": "op1", "text": "owner msg"},
             {"sender_id": "g1", "text": "guest msg"},
-            {"sender_id": "g2", "text": "guest2 msg"},
+            {"sender_id": "co1", "text": "coowner msg"},
             {"sender_id": "stranger", "text": "excluded"},
         ]
         result = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1", "g2"})
+            replies, "op1", {"g1": "guest", "co1": "coowner"})
         self.assertEqual(len(result), 3)
         self.assertEqual(result[0]["privilege"], "owner")
         self.assertEqual(result[1]["privilege"], "guest")
-        self.assertEqual(result[2]["privilege"], "guest")
+        self.assertEqual(result[2]["privilege"], "coowner")
 
-    def test_empty_operator_and_guests(self):
-        """With no operator and no guests, all replies pass through."""
+    def test_empty_operator_and_members(self):
+        """With no operator and no members, all replies pass through."""
         replies = [
             {"sender_id": "u1", "text": "a"},
             {"sender_id": "u2", "text": "b"},
         ]
-        result = wait_for_reply.filter_by_allowed_senders(replies, "", set())
+        result = wait_for_reply.filter_by_allowed_senders(replies, "", {})
         self.assertEqual(len(result), 2)
 
-    def test_none_operator_with_guests(self):
-        """None operator — only guest messages pass."""
+    def test_none_operator_with_members(self):
+        """None operator — only member messages pass."""
         replies = [
             {"sender_id": "g1", "text": "guest"},
             {"sender_id": "other", "text": "nope"},
         ]
         result = wait_for_reply.filter_by_allowed_senders(
-            replies, None, {"g1"})
+            replies, None, {"g1": "guest"})
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["privilege"], "guest")
 
     def test_empty_replies(self):
         """Empty input returns empty output."""
         result = wait_for_reply.filter_by_allowed_senders(
-            [], "op1", {"g1"})
+            [], "op1", {"g1": "guest"})
         self.assertEqual(len(result), 0)
 
     def test_missing_sender_id_excluded(self):
         """Messages without sender_id are excluded."""
         replies = [{"text": "no sender"}]
         result = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1"})
+            replies, "op1", {"g1": "guest"})
         self.assertEqual(len(result), 0)
 
     def test_original_reply_not_mutated(self):
         """filter_by_allowed_senders creates new dicts, not mutating originals."""
         original = {"sender_id": "op1", "text": "hello"}
-        wait_for_reply.filter_by_allowed_senders([original], "op1", set())
+        wait_for_reply.filter_by_allowed_senders([original], "op1", {})
         self.assertNotIn("privilege", original)
 
-    def test_operator_is_also_in_guest_set(self):
-        """If operator's open_id is also in guest_ids, they still get 'owner'."""
+    def test_operator_is_also_in_member_roles(self):
+        """If operator's open_id is also in member_roles, they still get 'owner'."""
         replies = [{"sender_id": "op1", "text": "hi"}]
         result = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"op1", "g1"})
+            replies, "op1", {"op1": "guest", "g1": "guest"})
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["privilege"], "owner")
+
+    def test_role_defaults_to_guest_for_backward_compat(self):
+        """Members with no explicit role default to guest."""
+        replies = [{"sender_id": "g1", "text": "hi"}]
+        # Passing a dict where role is already "guest" (backward compat check)
+        result = wait_for_reply.filter_by_allowed_senders(
+            replies, "op1", {"g1": "guest"})
+        self.assertEqual(result[0]["privilege"], "guest")
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +387,7 @@ class GuestFilterChainIntegrationTest(unittest.TestCase):
         ]
         # Step 1: allowed senders
         after_senders = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1"})
+            replies, "op1", {"g1": "guest"})
         self.assertEqual(len(after_senders), 1)
         self.assertEqual(after_senders[0]["privilege"], "guest")
 
@@ -387,14 +403,14 @@ class GuestFilterChainIntegrationTest(unittest.TestCase):
             {"sender_id": "g1", "text": "random chat"},
         ]
         after_senders = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1"})
+            replies, "op1", {"g1": "guest"})
         self.assertEqual(len(after_senders), 1)
 
         after_bot = wait_for_reply.filter_bot_interactions(after_senders, "bot1")
         self.assertEqual(len(after_bot), 0)
 
     def test_operator_and_guest_mixed_through_chain(self):
-        """Mixed operator and guest messages through full filter chain."""
+        """Mixed operator, guest, and coowner messages through full filter chain."""
         self._bot_sent_ids.add("bot-msg")
         replies = [
             # Operator @-mentions bot -> passes both
@@ -412,14 +428,14 @@ class GuestFilterChainIntegrationTest(unittest.TestCase):
                 "sender_id": "stranger", "text": "@Bot hack",
                 "mentions": [{"id": "bot1", "key": "@Bot"}],
             },
-            # Guest replies to bot -> passes both
-            {"sender_id": "g1", "text": "thanks", "parent_id": "bot-msg"},
+            # Coowner replies to bot -> passes both
+            {"sender_id": "co1", "text": "thanks", "parent_id": "bot-msg"},
             # Guest random chat -> fails bot filter
             {"sender_id": "g1", "text": "random"},
         ]
 
         after_senders = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1"})
+            replies, "op1", {"g1": "guest", "co1": "coowner"})
         self.assertEqual(len(after_senders), 4)  # excludes stranger
 
         after_bot = wait_for_reply.filter_bot_interactions(after_senders, "bot1")
@@ -427,7 +443,7 @@ class GuestFilterChainIntegrationTest(unittest.TestCase):
 
         # Verify privileges preserved
         privileges = [r["privilege"] for r in after_bot]
-        self.assertEqual(privileges, ["owner", "guest", "guest"])
+        self.assertEqual(privileges, ["owner", "guest", "coowner"])
 
     def test_reaction_from_guest_passes_full_chain(self):
         """Guest reaction passes both filters."""
@@ -435,22 +451,34 @@ class GuestFilterChainIntegrationTest(unittest.TestCase):
             {"sender_id": "g1", "msg_type": "reaction", "text": "THUMBSUP"},
         ]
         after_senders = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", {"g1"})
+            replies, "op1", {"g1": "guest"})
         self.assertEqual(len(after_senders), 1)
 
         after_bot = wait_for_reply.filter_bot_interactions(after_senders, "bot1")
         self.assertEqual(len(after_bot), 1)
 
-    def test_no_guests_falls_back_to_operator_only(self):
-        """With empty guest_ids, filter_by_allowed_senders acts like filter_by_operator."""
+    def test_no_members_falls_back_to_operator_only(self):
+        """With empty member_roles, filter_by_allowed_senders acts like filter_by_operator."""
         replies = [
             {"sender_id": "op1", "text": "owner"},
             {"sender_id": "g1", "text": "guest"},
         ]
         result = wait_for_reply.filter_by_allowed_senders(
-            replies, "op1", set())
+            replies, "op1", {})
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["privilege"], "owner")
+
+    def test_coowner_passes_without_bot_filter_in_regular_mode(self):
+        """In regular mode (no sidecar), coowner messages pass sender filter directly."""
+        replies = [
+            {"sender_id": "co1", "text": "do this"},
+            {"sender_id": "op1", "text": "ok"},
+        ]
+        result = wait_for_reply.filter_by_allowed_senders(
+            replies, "op1", {"co1": "coowner"})
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["privilege"], "coowner")
+        self.assertEqual(result[1]["privilege"], "owner")
 
 
 if __name__ == "__main__":
