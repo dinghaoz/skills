@@ -148,33 +148,39 @@ def _load_required_hooks():
 
 
 def check_hooks():
-    try:
-        project_dir = lark_im._require_project_dir()
-    except RuntimeError:
-        return False, "HANDOFF_PROJECT_DIR is not set"
     required = _load_required_hooks()
     found = set()
 
+    # Check global settings (~/.claude/)
     for fname in ["settings.json", "settings.local.json"]:
-        path = os.path.join(project_dir, ".claude", fname)
+        path = os.path.expanduser(f"~/.claude/{fname}")
         try:
             with open(path) as f:
                 data = json.load(f)
-            hooks = data.get("hooks", {})
             for hook_name in required:
-                if hooks.get(hook_name):
+                if data.get("hooks", {}).get(hook_name):
                     found.add(hook_name)
         except (FileNotFoundError, json.JSONDecodeError):
             continue
 
-    missing = [h for h in required if h not in found]
+    # Check project settings (.claude/) if available
+    try:
+        project_dir = lark_im._require_project_dir()
+        for fname in ["settings.json", "settings.local.json"]:
+            path = os.path.join(project_dir, ".claude", fname)
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                for hook_name in required:
+                    if data.get("hooks", {}).get(hook_name):
+                        found.add(hook_name)
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+    except RuntimeError:
+        pass  # Global-only install, no project dir yet
 
-    if missing:
-        return False, (
-            f"Missing hooks: {', '.join(missing)}\n"
-            f"Add them to .claude/settings.json or .claude/settings.local.json\n"
-            f"Run /handoff init to configure them automatically"
-        )
+    if [h for h in required if h not in found]:
+        return False, "Hooks not installed. Run /handoff init."
     return True, None
 
 
