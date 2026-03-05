@@ -67,13 +67,21 @@ Print summary and stop.
 
 ## Deinit (`/handoff deinit`)
 
-Reverse of `/handoff init`: auto-detect what's installed, remove it, then optionally delete config and the skill.
+Reverse of `/handoff init`: collect all decisions upfront, confirm once, then execute in one batch.
 
 1. **Detect installed components:**
    - **Claude Code hooks:** Scan `.claude/settings.json` and `.claude/settings.local.json` for hook entries whose `command` contains `handoff/scripts/`. Note which files have them.
    - **OpenCode plugin files:** Check whether `.opencode/plugins/handoff.ts`, `.opencode/scripts/permission_bridge.py`, `.opencode/scripts/handoff_tool_forwarding.js` exist.
 
-2. **Confirm and remove.** List what was found and ask the user to confirm. If nothing is found, skip to step 3.
+2. **Collect decisions** (ask all questions before doing anything):
+   - If Claude Code hooks found → ask whether to remove them (default: Yes)
+   - If OpenCode plugin files found → ask whether to remove them (default: Yes)
+   - Ask: "Also delete `~/.handoff/config.json`?" (default: No)
+   - Ask: "Also delete the handoff skill itself (`.claude/skills/handoff/`)?" (default: No)
+
+3. **Confirm once.** Show a summary of what will be removed and ask the user to confirm before proceeding.
+
+4. **Execute in one batch:**
 
    - **Remove Claude Code hooks:** For each settings file with handoff hooks, remove only entries whose `command` contains `handoff/scripts/`. Leave non-handoff entries untouched. Use the `Edit` tool.
    - **Remove OpenCode plugin files** (restore to skill assets first, then delete):
@@ -87,15 +95,15 @@ Reverse of `/handoff init`: auto-detect what's installed, remove it, then option
            .opencode/scripts/permission_bridge.py \
            .opencode/scripts/handoff_tool_forwarding.js
      ```
+   - **Delete config** (if selected):
+     ```bash
+     python3 .claude/skills/handoff/scripts/handoff_ops.py deinit-config
+     ```
+   - **Delete skill** (if selected):
+     ```bash
+     rm -rf .claude/skills/handoff
+     ```
 
-3. Ask: "Also delete `~/.handoff/config.json`? (y/N)" — default **No**. If yes:
-   ```bash
-   python3 .claude/skills/handoff/scripts/handoff_ops.py deinit-config
-   ```
-4. Ask: "Also delete the handoff skill itself (`.claude/skills/handoff/`)? (y/N)" — default **No**. If yes:
-   ```bash
-   rm -rf .claude/skills/handoff
-   ```
 5. Print a summary of what was removed and stop.
 
 ## Clear (`/handoff clear`)
