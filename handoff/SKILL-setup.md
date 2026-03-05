@@ -230,14 +230,17 @@ Re-run preflight to confirm it passes. This step is required — the worker reje
 
 ### Completion message
 
-**Keep it short.** After preflight passes, print exactly two lines:
+**Keep it short.** After preflight passes, print exactly this (with a blank line before for visibility):
 
 ```
-Setup complete. Exit and restart <tool>, then run /handoff.
+
+⚠️  EXIT AND RESTART <tool>, then run /handoff.
 ```
 
 Where `<tool>` is "Claude Code" or "OpenCode" depending on the runtime.
 
 Always include the restart instruction — even if hooks already existed. Restarting is always safe and ensures hooks are active.
+
+**CRITICAL: STOP after printing this message.** Do NOT attempt to enter handoff mode in the same session. Hooks installed during this session are not active until the user restarts. Proceeding to run `/handoff` or `enter_handoff.py` without a restart will fail silently — the permission bridge, notification forwarding, and post-tool-use hooks won't fire.
 
 Do **not** summarize what was configured, explain what each step did, or repeat values already shown in the summary table.
