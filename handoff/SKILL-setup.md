@@ -229,11 +229,14 @@ Re-run preflight to confirm it passes. This step is required — the worker reje
 
 ### Completion message
 
-**Keep it short.** After preflight passes, print only:
+**Keep it short.** After preflight passes, print exactly two lines:
 
-1. A one-line status: "Setup complete." or "Preflight passed."
-2. One sentence for what to do next:
-   - Claude Code / OpenCode (plugin just installed): "Exit and reopen, then run `/handoff`."
-   - Claude Code (hooks already existed, no restart needed): "Run `/handoff` to start."
+```
+Setup complete. Exit and restart <tool>, then run /handoff.
+```
 
-Do **not** summarize what was configured, explain what each step did, or repeat values already shown in the summary table. The user has seen the table — they don't need a prose recap.
+Where `<tool>` is "Claude Code" or "OpenCode" depending on the runtime.
+
+Always include the restart instruction — even if hooks already existed. Restarting is always safe and ensures hooks are active.
+
+Do **not** summarize what was configured, explain what each step did, or repeat values already shown in the summary table.
