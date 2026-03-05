@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
-"""PreToolUse hook for Bash: auto-approve only when handoff is active.
+"""PreToolUse hook for Bash: suppress noisy pattern warnings.
 
-When handoff mode is active for this session, outputs {"decision": "approve"}
-so that Bash commands bypass the interactive permission prompt (the user is on
-mobile and approves via Lark instead through the PermissionRequest hook).
+Claude Code raises PreToolUse-level permission dialogs for commands containing
+backticks, $() substitution, or newlines. These never reach PermissionRequest,
+so they bypass Lark in handoff mode and show as CLI prompts in normal mode.
 
-When handoff mode is NOT active, exits without output so normal permission
-checking applies.
+This hook pre-approves all Bash commands EXCEPT those with
+dangerouslyDisableSandbox=true, which are deferred to PermissionRequest
+(and routed to Lark in handoff mode via permission_bridge.py).
 """
 
 import json
-import os
 import sys
-
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, SCRIPT_DIR)
-
-import lark_im
 
 
 def main():
@@ -25,16 +20,10 @@ def main():
     except Exception:
         sys.exit(0)
 
-    session_id = hook_input.get("session_id", "")
-    if not session_id:
-        sys.exit(0)
+    tool_input = hook_input.get("tool_input", {})
+    if tool_input.get("dangerouslyDisableSandbox", False):
+        sys.exit(0)  # Defer to PermissionRequest (CLI prompt or Lark)
 
-    session = lark_im.get_session(session_id)
-    if not session:
-        sys.exit(0)
-
-    # Handoff is active — approve so permission goes through PermissionRequest
-    # hook (permission_bridge.py) rather than the interactive CLI prompt.
     print('{"decision": "approve"}')
 
 

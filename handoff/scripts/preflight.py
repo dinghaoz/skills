@@ -275,15 +275,78 @@ def report():
                 if hooks.get(hook_name):
                     found.append(hook_name)
             if found:
-                print(f"  {fname}: {', '.join(found)}")
+                print(f"  project/{fname}: {', '.join(found)}")
             else:
-                print(f"  {fname}: (no handoff hooks)")
+                print(f"  project/{fname}: (no handoff hooks)")
         except FileNotFoundError:
-            print(f"  {fname}: (file not found)")
+            print(f"  project/{fname}: (file not found)")
         except json.JSONDecodeError:
-            print(f"  {fname}: (invalid JSON)")
+            print(f"  project/{fname}: (invalid JSON)")
+
+    for fname in ["settings.json", "settings.local.json"]:
+        path = os.path.expanduser(f"~/.claude/{fname}")
+        if _has_handoff_hooks(path):
+            print(f"  global/{fname}: has handoff hooks")
+        else:
+            try:
+                open(path).close()
+                print(f"  global/{fname}: (no handoff hooks)")
+            except FileNotFoundError:
+                pass  # skip missing global files silently
+
+    ok, detail = check_dual_install()
+    if not ok:
+        print(f"\n  [WARN] Dual install: {detail}")
 
     print()
+
+
+def _has_handoff_hooks(settings_path):
+    """Return True if a settings file contains any handoff hook entries."""
+    try:
+        with open(settings_path) as f:
+            data = json.load(f)
+        for entries in data.get("hooks", {}).values():
+            for entry in entries:
+                for hook in entry.get("hooks", []):
+                    if "handoff/scripts/" in hook.get("command", ""):
+                        return True
+    except (FileNotFoundError, json.JSONDecodeError, TypeError):
+        pass
+    return False
+
+
+def check_dual_install():
+    """Warn if handoff hooks are installed both globally and at project level.
+
+    Both sets of hooks run simultaneously in Claude Code, causing duplicate
+    Lark messages and duplicate permission cards.
+    """
+    global_settings = os.path.expanduser("~/.claude/settings.json")
+    global_local = os.path.expanduser("~/.claude/settings.local.json")
+    global_has = _has_handoff_hooks(global_settings) or _has_handoff_hooks(global_local)
+    if not global_has:
+        return True, None  # No global install, no conflict
+
+    try:
+        project_dir = lark_im._require_project_dir()
+    except RuntimeError:
+        return True, None  # Can't check project dir, skip
+
+    project_has = any(
+        _has_handoff_hooks(os.path.join(project_dir, ".claude", fname))
+        for fname in ["settings.json", "settings.local.json"]
+    )
+    if not project_has:
+        return True, None  # Only global install, fine
+
+    return False, (
+        "Handoff hooks are installed BOTH globally (~/.claude/settings.json) "
+        "and at project level (.claude/settings.json).\n"
+        "Both sets of hooks run simultaneously, causing duplicate Lark messages "
+        "and duplicate permission request cards.\n"
+        "Fix: run /handoff deinit in one context to remove the duplicate install."
+    )
 
 
 def _parse_tool(argv):
@@ -320,6 +383,7 @@ def main():
         checks.append(("Hooks configured", check_hooks))
 
     errors = []
+    warnings = []
     worker_url = None
 
     for name, fn in checks:
@@ -341,9 +405,17 @@ def main():
             print(f"  [FAIL] Worker reachable: {detail}")
             errors.append(detail)
 
+    # Dual-install warning (non-blocking)
+    ok, detail = check_dual_install()
+    if not ok:
+        print(f"  [WARN] Dual install detected: {detail}")
+        warnings.append(detail)
+
     if errors:
         print(f"\n{len(errors)} issue(s) found. Fix them before using /handoff.")
         sys.exit(1)
+    elif warnings:
+        print(f"\n{len(warnings)} warning(s). Handoff will work but may send duplicate messages.")
     else:
         print("\nAll checks passed. Ready for handoff.")
 

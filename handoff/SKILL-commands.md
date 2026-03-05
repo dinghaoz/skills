@@ -92,7 +92,11 @@ Reverse of `/handoff init`: remove installed hooks or plugin files, then optiona
    ```bash
    python3 .claude/skills/handoff/scripts/handoff_ops.py deinit-config
    ```
-4. Print a summary of what was removed and stop.
+4. Ask: "Also delete the handoff skill itself (`.claude/skills/handoff/`)? (y/N)" — default **No**. If yes:
+   ```bash
+   rm -rf .claude/skills/handoff
+   ```
+5. Print a summary of what was removed and stop.
 
 ## Clear (`/handoff clear`)
 
