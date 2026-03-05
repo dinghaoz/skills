@@ -94,7 +94,7 @@ The plugin handles `session.idle` during active handoff and sends continuation p
 
 This skill supports sub-commands via arguments:
 
-- **`/handoff`** (no args) — Run preflight; if it fails, tell the user to run `/handoff init`. If it passes, enter Handoff mode.
+- **`/handoff`** (no args) — Run preflight; if it fails, offer to run the setup wizard inline. If it passes, enter Handoff mode.
 - **`/handoff help`** — Print all supported sub-commands with descriptions. Do NOT enter Handoff mode. Safe to run anytime.
 - **`/handoff init`** — Run the full interactive setup wizard for ALL steps, even if values already exist. For each step, offer "Keep existing" (if a value exists), "Provide a new value", or "Create new" (where applicable). **CLI only** — cannot run during handoff mode.
 - **`/handoff check`** — Run preflight checks and print a status report of what's configured and what's missing. Do NOT enter Handoff mode. Safe to run anytime.
@@ -181,7 +181,11 @@ Print the output to the user. This shows all configured values, hook status, and
 
 ### For `/handoff` (no args)
 
-If the script exits with a non-zero code, show the errors to the user and tell them to run `/handoff init` to fix the configuration. **Do NOT enter Handoff mode.**
+If the script exits with a non-zero code, show the errors to the user and use **AskUserQuestion** with two options:
+- **"Run setup wizard"** — read `SKILL-setup.md` and run the Guided Setup now
+- **"Exit"** — stop here; the user will fix it manually
+
+Do NOT enter Handoff mode regardless of which option is chosen.
 
 ### For `/handoff init`
 
