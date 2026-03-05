@@ -10,10 +10,10 @@ import os
 import subprocess
 import sys
 
-import _script_utils as script_utils  # type: ignore
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
+
+import script_utils
 import lark_im
 
 
