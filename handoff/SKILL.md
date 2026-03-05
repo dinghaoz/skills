@@ -50,7 +50,7 @@ Run `preflight.py --tool opencode` (checks plugin files, skips Claude hooks).
 Skip the Claude Code hooks step. Instead, install the OpenCode plugin files from the skill's assets:
 
 ```bash
-SKILL=".claude/skills/handoff"
+SKILL=$(python3 -c "import os; p='.claude/skills/handoff'; print(p if os.path.isdir(p) else os.path.expanduser('~/.claude/skills/handoff'))")
 mkdir -p .opencode/plugins .opencode/scripts
 cp "$SKILL/assets/opencode/plugins/handoff.ts" .opencode/plugins/
 cp "$SKILL/assets/opencode/scripts/permission_bridge.py" .opencode/scripts/

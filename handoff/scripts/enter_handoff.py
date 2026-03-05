@@ -5,16 +5,19 @@ Runs Steps A→B→C(auto)→D and returns one of:
   {"status": "ready",          "chat_id": "...", "session_id": "...", "project_dir": "..."}
   {"status": "already_active", "chat_id": "...", "session_id": "..."}
   {"status": "choose",         "groups": [...],  "reason": "all_occupied" | "multiple_inactive"}
+  {"status": "restart_required", "missing": [...]}
 
 "ready" means activate completed — caller should run start_and_wait.py.
 "choose" means Claude must ask the user which group to use, then call
   handoff_ops.py activate --chat-id <...> --session-model <...>
   followed by start_and_wait.py.
 "already_active" means this session already has a live handoff.
+"restart_required" means session ID could not be resolved; user must restart.
 
-Env vars resolved automatically if not already set:
-  HANDOFF_PROJECT_DIR  — falls back to CLAUDE_PROJECT_DIR, then cwd
-  HANDOFF_SESSION_ID   — falls back to a freshly generated UUID
+Env var resolution (in order):
+  HANDOFF_PROJECT_DIR  — env var, then CLAUDE_PROJECT_DIR, then cwd
+  HANDOFF_SESSION_TOOL — env var, then always "Claude Code"
+  HANDOFF_SESSION_ID   — env var, then ~/.handoff/sessions/<id>.json matched by ppid
 """
 
 import argparse
@@ -37,8 +40,67 @@ def _jprint(obj):
     print(json.dumps(obj, ensure_ascii=True))
 
 
+def _get_claude_pid():
+    """Return the PID of the Claude Code process that spawned this Bash call.
+
+    Process tree: Claude Code (PID=X) → bash (PID=Y) → enter_handoff.py (us)
+    os.getppid() gives Y (bash). We then query bash's parent to get X.
+    Returns None if the PID cannot be determined.
+    """
+    import subprocess as _sp
+    try:
+        bash_pid = os.getppid()
+        result = _sp.run(
+            ["ps", "-o", "ppid=", "-p", str(bash_pid)],
+            capture_output=True, text=True,
+        )
+        return int(result.stdout.strip())
+    except Exception:
+        return None
+
+
 def _resolve_env():
-    """Verify required env vars are set. Returns error dict if any are missing."""
+    """Resolve required env vars, using fallbacks for each.
+
+    Fallback chain:
+      HANDOFF_SESSION_TOOL — always "Claude Code" (enter_handoff is Claude Code only)
+      HANDOFF_PROJECT_DIR  — CLAUDE_PROJECT_DIR env var, then os.getcwd()
+      HANDOFF_SESSION_ID   — ~/.handoff/sessions/<id>.json matched by ppid.
+                             The hook stores ppid = Claude Code's PID. We derive the
+                             same PID by walking up: us → bash → Claude Code. Exact
+                             ppid match means no ambiguity even with multiple sessions.
+    Returns error dict {"status": "restart_required", "missing": [...]} if session_id
+    cannot be resolved.
+    """
+    # HANDOFF_SESSION_TOOL — always "Claude Code" for this script
+    if not os.environ.get("HANDOFF_SESSION_TOOL"):
+        os.environ["HANDOFF_SESSION_TOOL"] = "Claude Code"
+
+    # HANDOFF_PROJECT_DIR — fall back to CLAUDE_PROJECT_DIR then cwd
+    if not os.environ.get("HANDOFF_PROJECT_DIR"):
+        fallback = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+        os.environ["HANDOFF_PROJECT_DIR"] = fallback
+
+    # HANDOFF_SESSION_ID — find session file whose ppid matches our Claude Code parent
+    if not os.environ.get("HANDOFF_SESSION_ID"):
+        sessions_dir = os.path.expanduser("~/.handoff/sessions")
+        if os.path.isdir(sessions_dir):
+            try:
+                claude_pid = _get_claude_pid()
+                for fname in os.listdir(sessions_dir):
+                    if not fname.endswith(".json"):
+                        continue
+                    try:
+                        with open(os.path.join(sessions_dir, fname)) as f:
+                            data = json.load(f)
+                        if claude_pid and data.get("ppid") == claude_pid:
+                            os.environ["HANDOFF_SESSION_ID"] = data["session_id"]
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
     missing = [v for v in ("HANDOFF_PROJECT_DIR", "HANDOFF_SESSION_ID", "HANDOFF_SESSION_TOOL")
                if not os.environ.get(v)]
     if missing:

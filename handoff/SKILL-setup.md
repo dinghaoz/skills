@@ -118,7 +118,7 @@ Warn: "All Claude handoff messages from this machine will be sent to this email'
 **OpenCode users:** Install the plugin files from the skill's assets directory, then delete the assets (they are a distribution snapshot, not a permanent copy):
 
 ```bash
-SKILL=".claude/skills/handoff"
+SKILL=$(python3 -c "import os; p='.claude/skills/handoff'; print(p if os.path.isdir(p) else os.path.expanduser('~/.claude/skills/handoff'))")
 mkdir -p .opencode/plugins .opencode/scripts
 cp "$SKILL/assets/opencode/plugins/handoff.ts" .opencode/plugins/
 cp "$SKILL/assets/opencode/scripts/permission_bridge.py" .opencode/scripts/
