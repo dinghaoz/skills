@@ -33,6 +33,7 @@ def main():
         hook_input = {}
 
     session_id = hook_input.get("session_id", "")
+    warn(f"hook fired: session_id={session_id!r}, keys={list(hook_input.keys())}")
 
     # Persist session_id and project dir as env vars for subsequent Bash commands
     env_file = os.environ.get("CLAUDE_ENV_FILE")
@@ -74,6 +75,7 @@ def main():
             # write/read different directories. /private/tmp/claude-{uid}/ is in
             # the sandbox write allowlist and works from both contexts.
             sessions_dir = f"/private/tmp/claude-{os.getuid()}/handoff-sessions"
+            warn(f"writing session cache to {sessions_dir}")
             os.makedirs(sessions_dir, exist_ok=True)
             # Collect ancestor PIDs (up to 3 levels: us → shell? → Claude Code → ...)
             ancestors = []
@@ -102,6 +104,7 @@ def main():
                     "written_at": time.time(),
                     "ancestors": ancestors,
                 }, f)
+            warn(f"wrote session cache: {cache_file} ancestors={ancestors}")
             # Clean up session files older than 24h to avoid accumulation
             cutoff = time.time() - 86400
             for fname in os.listdir(sessions_dir):

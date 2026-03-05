@@ -138,8 +138,10 @@ Tell the user: **"Plugin installed. Please exit and reopen OpenCode — plugins 
 
 **Detect install scope first:**
 
-- **Project install**: `.claude/skills/handoff/hooks.json` exists in the current directory → hooks.json is here, settings targets are `.claude/settings.json` / `.claude/settings.local.json`.
-- **Global install**: only `~/.claude/skills/handoff/hooks.json` exists → hooks.json is there, settings targets are `~/.claude/settings.json` / `~/.claude/settings.local.json`.
+- **Project install**: `.claude/skills/handoff/hooks.json` exists in the current directory → hooks.json is here, settings target is `.claude/settings.json` (or `.claude/settings.local.json` for permissions only).
+- **Global install**: only `~/.claude/skills/handoff/hooks.json` exists → hooks.json is there, settings target is `~/.claude/settings.json`.
+
+**IMPORTANT: Hooks MUST go in `settings.json`, NOT `settings.local.json`.** Claude Code silently ignores hooks defined in `settings.local.json` — they simply won't fire. Only permissions work from `settings.local.json`.
 
 Use the scope-appropriate paths throughout the rest of this step.
 
@@ -149,16 +151,15 @@ Use the scope-appropriate paths throughout the rest of this step.
 - **Global install**: replace each entire `command` string with a literal path. Extract the script filename from the `command` in `hooks.json`, then construct: `python3 "<expanded-HOME>/.claude/skills/handoff/scripts/<script-name>.py"`. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the commands contain literal paths that work in any project.
 
 **Determine target file:**
-1. Read both candidate settings files for the detected scope (missing files count as empty).
-2. Check whether each file has a `hooks` key with any entries (handoff or otherwise).
-3. Choose the target file:
-   - Only one file has a `hooks` key → use that file (no need to ask).
-   - Both files have a `hooks` key → prefer `settings.json`; if that would be surprising (e.g. the only hooks are in `settings.local.json`), use **AskUserQuestion** to let the user pick.
-   - Neither file has a `hooks` key:
-     - **Global install**: auto-select `~/.claude/settings.local.json` — no need to ask (handoff config is machine-specific, so keeping hooks local makes sense).
-     - **Project install**: use **AskUserQuestion** with two options:
-       - `settings.local.json` — machine-local, not committed to git (Recommended)
-       - `settings.json` — shared, committed to git with the project
+
+Hooks MUST go in `settings.json` (not `settings.local.json`). Claude Code only loads hooks from `settings.json`.
+
+1. Read the `settings.json` for the detected scope.
+2. If it already has a `hooks` key, merge into it.
+3. If not, create the `hooks` key.
+
+For **project install**: target is `.claude/settings.json` (shared, committed to git).
+For **global install**: target is `~/.claude/settings.json`.
 
 Remember the chosen file — do NOT apply yet.
 
@@ -187,7 +188,7 @@ Print the summary as a markdown table (redact secrets — show only last 4 chars
 | app_id | cli_a901543264b9ded1 |
 | app_secret | ***TbOm |
 | email | name@gmail.com |
-| hooks | settings.local.json |
+| hooks | settings.json |
 
 Use **AskUserQuestion** with two options: "Apply" (description: "Save all settings and run preflight") and "Cancel" (description: "Discard changes and exit setup").
 
