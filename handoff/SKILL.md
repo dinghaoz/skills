@@ -247,6 +247,20 @@ All handoff commands work the same: "handback" to exit, heartbeats for long task
 
 ## Entering Handoff Mode
 
+### Setup: Resolve environment variables
+
+The SessionStart hook normally injects `HANDOFF_PROJECT_DIR` and `HANDOFF_SESSION_ID`, but they may be missing if hooks were just installed this session. Before Step A, ensure both are set:
+
+```bash
+# Derive project dir from Claude's own env var, or cwd as fallback
+export HANDOFF_PROJECT_DIR="${HANDOFF_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
+
+# Generate a session ID if not already set
+export HANDOFF_SESSION_ID="${HANDOFF_SESSION_ID:-$(python3 -c 'import uuid; print(uuid.uuid4())')}"
+```
+
+Set these once and pass them to **every** subsequent `handoff_ops.py` / `start_and_wait.py` / `wait_for_reply.py` call in this session (prefix each Bash command with `HANDOFF_PROJECT_DIR="..." HANDOFF_SESSION_ID="..."`).
+
 ### Step A: Check if this session already has a handoff
 
 ```bash
