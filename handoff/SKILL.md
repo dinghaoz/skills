@@ -257,9 +257,18 @@ python3 $SKILL_SCRIPTS/enter_handoff.py --session-model '${session_model}'
 
 Pass `--mode no-ask` or `--mode new` when the user explicitly requests those modes.
 
-**Parse the output:**
+**Parse the output and extract env vars for all subsequent commands:**
 
-- **`"status": "ready"`** — activation complete. `chat_id`, `session_id`, and `project_dir` are in the output. Proceed to Step E.
+On any `ready` or `already_active` result, extract `session_id` and `project_dir` from the JSON and prefix every subsequent script call with them:
+```
+HANDOFF_PROJECT_DIR="<project_dir>" HANDOFF_SESSION_ID="<session_id>" python3 $SKILL_SCRIPTS/...
+```
+Each Bash call runs in a new subprocess — shell exports do not persist between calls.
+
+**Status values:**
+
+- **`"status": "restart_required"`** — session env vars are missing (hooks haven't run yet). **Stop immediately.** Tell the user: "The session hooks haven't run yet. Please exit and restart Claude Code, then run `/handoff` again." Do NOT attempt to work around this or generate the missing values manually.
+- **`"status": "ready"`** — activation complete. Extract `chat_id`, `session_id`, `project_dir`. Proceed to Step E.
 - **`"status": "already_active"`** — this session already has a live handoff.
   - If the user asked for `no ask` / `auto`: continue with the current chat (Step E).
   - Otherwise: ask — continue current chat, or re-run with `--mode new` to get a fresh group.
@@ -270,7 +279,7 @@ Pass `--mode no-ask` or `--mode new` when the user explicitly requests those mod
     - **"Create new"**: `python3 $SKILL_SCRIPTS/handoff_ops.py create-group --existing-names-json '<JSON>'` then `activate`.
     - **Occupied group**: run takeover then skip activate:
       ```bash
-      python3 $SKILL_SCRIPTS/handoff_ops.py takeover --chat-id '<CHAT_ID>' --session-model '${session_model}'
+      HANDOFF_PROJECT_DIR="..." HANDOFF_SESSION_ID="..." python3 $SKILL_SCRIPTS/handoff_ops.py takeover --chat-id '<CHAT_ID>' --session-model '${session_model}'
       ```
       If takeover returns `ok: false`, re-run `enter_handoff.py` and choose again.
 

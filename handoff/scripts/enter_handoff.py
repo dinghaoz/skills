@@ -38,15 +38,12 @@ def _jprint(obj):
 
 
 def _resolve_env():
-    """Verify required env vars are set. Raises with a clear message if not."""
+    """Verify required env vars are set. Returns error dict if any are missing."""
     missing = [v for v in ("HANDOFF_PROJECT_DIR", "HANDOFF_SESSION_ID", "HANDOFF_SESSION_TOOL")
                if not os.environ.get(v)]
     if missing:
-        raise RuntimeError(
-            f"Missing env vars: {', '.join(missing)}. "
-            "The SessionStart hook sets these at session start. "
-            "Exit and restart Claude Code, then run /handoff again."
-        )
+        return {"status": "restart_required", "missing": missing}
+    return None
 
 
 def _pick_inactive(groups):
@@ -73,8 +70,11 @@ def main():
     )
     args = p.parse_args()
 
-    # Resolve env vars so all subsequent lark_im calls work
-    _resolve_env()
+    # Verify required env vars are present
+    err = _resolve_env()
+    if err:
+        _jprint(err)
+        return 1
     project_dir = os.environ["HANDOFF_PROJECT_DIR"]
     session_id = os.environ["HANDOFF_SESSION_ID"]
 
