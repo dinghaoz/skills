@@ -92,10 +92,11 @@ def _resolve_env():
 
     # HANDOFF_SESSION_ID — find session file with matching ancestor PIDs
     if not os.environ.get("HANDOFF_SESSION_ID"):
-        sessions_dir = os.path.join(
-            os.environ.get("TMPDIR") or f"/private/tmp/claude-{os.getuid()}",
-            "handoff-sessions",
-        )
+        # Use a fixed path, NOT $TMPDIR. Hooks get the system TMPDIR
+        # (/var/folders/...) while Bash tool calls get /tmp/claude — they'd
+        # write/read different directories. /private/tmp/claude-{uid}/ is in
+        # the sandbox write allowlist and works from both contexts.
+        sessions_dir = f"/private/tmp/claude-{os.getuid()}/handoff-sessions"
         if os.path.isdir(sessions_dir):
             try:
                 my_ancestors = _get_ancestors()

@@ -69,10 +69,11 @@ def main():
     # process tree depth (hook may be spawned via shell wrapper or directly).
     if session_id:
         try:
-            sessions_dir = os.path.join(
-                os.environ.get("TMPDIR") or f"/private/tmp/claude-{os.getuid()}",
-                "handoff-sessions",
-            )
+            # Use a fixed path, NOT $TMPDIR. Hooks get the system TMPDIR
+            # (/var/folders/...) while Bash tool calls get /tmp/claude — they'd
+            # write/read different directories. /private/tmp/claude-{uid}/ is in
+            # the sandbox write allowlist and works from both contexts.
+            sessions_dir = f"/private/tmp/claude-{os.getuid()}/handoff-sessions"
             os.makedirs(sessions_dir, exist_ok=True)
             # Collect ancestor PIDs (up to 3 levels: us → shell? → Claude Code → ...)
             ancestors = []
