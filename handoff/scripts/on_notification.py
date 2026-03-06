@@ -17,6 +17,9 @@ COLORS = {
     "permission_prompt": "orange",
     "idle_prompt": "blue",
     "elicitation_dialog": "purple",
+    "quota_exceeded": "red",
+    "usage_warning": "orange",
+    "rate_limit": "orange",
 }
 
 
@@ -44,8 +47,15 @@ def main():
     if notification_type == "permission_prompt":
         return
 
+    # Always forward quota/usage/rate limit notifications to Lark
+    critical_types = ("quota_exceeded", "usage_warning", "rate_limit")
+
     # Skip tool-running progress notifications — noise during handoff
-    if notification_type not in ("idle_prompt", "elicitation_dialog"):
+    # But allow critical notifications and specific dialog types
+    if (
+        notification_type not in ("idle_prompt", "elicitation_dialog")
+        and notification_type not in critical_types
+    ):
         return
 
     # idle_prompt during handoff: the model may have lost the handoff loop

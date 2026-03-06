@@ -805,8 +805,17 @@ except Exception:
 
         const props = (event as any).properties || {}
         const message = props.message || "Notification"
+        
+        // Use red for critical notifications (quota, rate limit, errors)
+        const lowerMsg = message.toLowerCase()
+        const isCritical = lowerMsg.includes("quota") || 
+                          lowerMsg.includes("limit") || 
+                          lowerMsg.includes("usage") ||
+                          lowerMsg.includes("exceeded") ||
+                          lowerMsg.includes("rate limit")
+        const color = isCritical ? "red" : "blue"
 
-        await sendMarkdownCard(chatId, message, "Notification", "blue")
+        await sendMarkdownCard(chatId, message, "Notification", color)
       }
     },
   }
