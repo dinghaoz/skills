@@ -263,8 +263,8 @@ Each Bash call runs in a new subprocess — shell exports do not persist between
 
 **Status values:**
 
-- **`"status": "hooks_pending"`** — hooks were just installed but not yet loaded. **Stop immediately.** Tell the user: "Hooks were just installed. Exit and restart Claude Code, then run `/handoff`." Do NOT proceed.
-- **`"status": "restart_required"`** — session env vars are missing (hooks haven't run yet). **Stop immediately.** Tell the user: "The session hooks haven't run yet. Please exit and restart Claude Code, then run `/handoff` again." Do NOT attempt to work around this or generate the missing values manually.
+- **`"status": "hooks_pending"`** — hooks were just installed but not yet loaded. **Stop immediately.** Tell the user: "Please exit and restart Claude Code, then run `/handoff`." Do NOT proceed. Do NOT explain technical details.
+- **`"status": "restart_required"`** — session env vars are missing (hooks haven't run yet). **Stop immediately.** Tell the user: "Please exit and restart Claude Code, then run `/handoff` again." Do NOT attempt to work around this or generate the missing values manually. Do NOT explain technical details.
 - **`"status": "ready"`** — activation complete. Extract `chat_id`, `session_id`, `project_dir`. Proceed to Step E.
 - **`"status": "already_active"`** — this session already has a live handoff.
   - If the user asked for `no ask` / `auto`: continue with the current chat (Step E).

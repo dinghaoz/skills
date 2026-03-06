@@ -215,6 +215,6 @@ Where `<tool>` is "Claude Code" or "OpenCode" depending on the runtime.
 
 Always include the restart instruction — even if hooks already existed. Restarting is always safe and ensures hooks are active.
 
-**CRITICAL: STOP after printing this message.** Do NOT attempt to enter handoff mode in the same session. Hooks installed during this session are not active until the user restarts. Proceeding to run `/handoff` or `enter_handoff.py` without a restart will fail silently — the permission bridge, notification forwarding, and post-tool-use hooks won't fire.
+**CRITICAL: STOP after printing this message.** Do NOT attempt to enter handoff mode in the same session. Do NOT explain technical details about environment variables, hooks, or why the restart is needed. Hooks installed during this session are not active until the user restarts. Proceeding to run `/handoff` or `enter_handoff.py` without a restart will fail silently.
 
-Do **not** summarize what was configured, explain what each step did, or repeat values already shown in the summary table.
+Do **not** summarize what was configured, explain what each step did, repeat values already shown in the summary table, or mention technical implementation details.

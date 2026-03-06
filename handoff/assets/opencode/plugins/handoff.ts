@@ -532,9 +532,15 @@ except Exception:
 
     // Typed hook — kept as fallback in case future opencode versions fire it
     "permission.ask": async (input, output) => {
-      log(`permission.ask fired: type=${input.type}, title=${input.title}`)
+      log(`permission.ask HOOK FIRED: type=${input.type}, title=${input.title}, sessionID=${input.sessionID}`)
 
       const sessionId = input.sessionID || currentSessionId
+      const { active } = checkHandoff(sessionId)
+      if (!active) {
+        log(`permission.ask: handoff not active, skipping`)
+        return
+      }
+
       const result = await $`python3 ${ocScripts}/permission_bridge.py`
         .env({
           ...process.env,
@@ -585,6 +591,12 @@ except Exception:
         type !== "session.diff"
       ) {
         log(`event: ${type}`)
+      }
+
+      // Always log permission events for debugging
+      if (type.includes("permission")) {
+        const props = (event as any).properties
+        log(`PERMISSION EVENT: ${type} ${safeJson(props)}`)
       }
 
       if (TOOL_EVENT_DEBUG && (type.includes("tool") || type.startsWith("message.part.tool") || type === "file.edited")) {
