@@ -51,7 +51,7 @@ def _rotate_log_if_needed():
         # Skip to next newline to avoid a partial first line
         nl = tail.find(b"\n")
         if nl >= 0:
-            tail = tail[nl + 1:]
+            tail = tail[nl + 1 :]
         with open(_LOG_FILE, "wb") as f:
             f.write(tail)
     except Exception:
@@ -155,6 +155,32 @@ def deny_and_exit(tool_name, reason=""):
     sys.exit(0)
 
 
+def is_handoff_internal_command(tool_name, tool_input):
+    """Check if this is a handoff internal command that should be auto-approved."""
+    if tool_name != "Bash":
+        return False
+
+    cmd = tool_input.get("command", "")
+
+    # Handoff internal scripts that should never require user approval
+    internal_patterns = [
+        "/handoff/scripts/check_active.py",
+        "/handoff/scripts/handoff_ops.py check-active",
+        "/handoff/scripts/handoff_ops.py session-check",
+        "/handoff/scripts/wait_for_reply.py",
+        "/handoff/scripts/send_and_wait.py",
+        "/handoff/scripts/send_to_group.py",
+        "/handoff/scripts/iterm2_silence.py",
+        "/handoff/scripts/on_notification.py",
+        "/handoff/scripts/on_post_tool_use.py",
+        "/handoff/scripts/on_pre_compact.py",
+        "/handoff/scripts/on_session_start.py",
+        "/handoff/scripts/on_session_end.py",
+    ]
+
+    return any(pattern in cmd for pattern in internal_patterns)
+
+
 def main():
     try:
         hook_input = json.loads(sys.stdin.read())
@@ -164,6 +190,19 @@ def main():
 
     tool_name = hook_input.get("tool_name", "unknown")
     tool_input = hook_input.get("tool_input", {})
+
+    # Auto-approve handoff internal commands
+    if is_handoff_internal_command(tool_name, tool_input):
+        _log(f"auto-approve: handoff internal command")
+        output = {
+            "hookSpecificOutput": {
+                "hookEventName": "PermissionRequest",
+                "decision": {"behavior": "allow"},
+            },
+        }
+        json.dump(output, sys.stdout)
+        sys.exit(0)
+
     message = format_tool_description(tool_name, tool_input)
     if not message:
         message = "Claude needs your permission"
@@ -197,7 +236,11 @@ def main():
     # Generate nonce, ack stale replies, send card — all in one step.
     try:
         nonce = prepare_permission_request(
-            lark_im, token, chat_id, tool_name, message,
+            lark_im,
+            token,
+            chat_id,
+            tool_name,
+            message,
             ack_fn=lambda key, before: lark_im.ack_worker_replies(
                 worker_url, chat_id, before, key=key
             ),
@@ -246,9 +289,7 @@ def main():
             _log(f"updatedPermissions: {suggestions}")
 
     if decision == "deny":
-        decision_obj["message"] = (
-            f"Permission to use {tool_name} was denied via Lark."
-        )
+        decision_obj["message"] = f"Permission to use {tool_name} was denied via Lark."
 
     output = {
         "hookSpecificOutput": {
