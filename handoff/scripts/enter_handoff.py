@@ -146,6 +146,15 @@ def main():
     )
     args = p.parse_args()
 
+    # Check if hooks were just installed but not yet loaded (requires restart)
+    marker = f"/private/tmp/claude-{os.getuid()}/handoff-hooks-pending"
+    if os.path.exists(marker):
+        _jprint({
+            "status": "hooks_pending",
+            "message": "Hooks were just installed. Exit and restart Claude Code to activate them, then run /handoff.",
+        })
+        return 1
+
     # Verify required env vars are present
     err = _resolve_env()
     if err:

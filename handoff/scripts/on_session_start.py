@@ -117,6 +117,15 @@ def main():
         except Exception as e:
             warn(f"failed to write session cache: {e}")
 
+    # Clear hooks-pending marker (proves hooks are loaded in this session)
+    try:
+        marker = f"/private/tmp/claude-{os.getuid()}/handoff-hooks-pending"
+        if os.path.exists(marker):
+            os.unlink(marker)
+            warn("cleared handoff-hooks-pending marker")
+    except Exception as e:
+        warn(f"failed to clear hooks-pending marker: {e}")
+
     # Check if this session has an active handoff
     session = lark_im.get_session(session_id) if session_id else None
     if not session:

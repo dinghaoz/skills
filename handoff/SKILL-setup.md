@@ -136,52 +136,18 @@ Tell the user: **"Plugin installed. Please exit and reopen OpenCode — plugins 
 
 **Claude Code users:** Install hooks into a Claude settings file.
 
-**Detect install scope — run this check, do NOT guess:**
-
+Run the hook installer:
 ```bash
-ls .claude/skills/handoff/hooks.json 2>/dev/null && echo "SCOPE=project" || echo "SCOPE=global"
+python3 "$SKILL_SCRIPTS/install_hooks.py"
 ```
 
-- **Project install** (`SCOPE=project`): `.claude/skills/handoff/hooks.json` exists in the current working directory.
-- **Global install** (`SCOPE=global`): it does NOT exist in the current directory — use `~/.claude/skills/handoff/hooks.json` instead.
+This automatically:
+- Detects install scope (project vs global) by checking if `.claude/skills/handoff/hooks.json` exists in the project
+- Resolves hook commands for the detected scope
+- Merges hooks into the correct `settings.json` (project or `~/.claude/settings.json`)
+- Skips duplicates (idempotent)
 
-**CRITICAL: The scope determines BOTH the hooks.json source AND the settings.json target. Do NOT mix scopes.** A global install MUST write to `~/.claude/settings.json`. A project install MUST write to `.claude/settings.json`. Writing global hooks to the project settings (or vice versa) is a bug.
-
-**IMPORTANT: Hooks MUST go in `settings.json`, NOT `settings.local.json`.** Claude Code silently ignores hooks defined in `settings.local.json` — they simply won't fire. Only permissions work from `settings.local.json`.
-
-Use the scope-appropriate paths throughout the rest of this step.
-
-**Resolve hook command strings by scope:**
-
-- **Project install**: use hook command strings from `hooks.json` as-is. Each command uses `git rev-parse --absolute-git-dir` to locate the main project's `.git` directory and resolve scripts relative to it. This works correctly from both the main worktree and any git worktree (e.g. created with `/mkwt`). If the script file doesn't exist, the hook exits 0 silently — safe to run from any project.
-- **Global install**: replace each entire `command` string with a literal path. Extract the script filename from the `command` in `hooks.json`, then construct: `python3 "<expanded-HOME>/.claude/skills/handoff/scripts/<script-name>.py"`. Expand `$HOME` to the actual path (e.g. `/Users/alice`), so the commands contain literal paths that work in any project.
-
-**Determine target file (must match scope):**
-
-Hooks MUST go in `settings.json` (not `settings.local.json`). Claude Code only loads hooks from `settings.json`.
-
-| Scope | settings.json target |
-|-------|---------------------|
-| **project** | `.claude/settings.json` (in project root) |
-| **global** | `~/.claude/settings.json` (user home) |
-
-1. Read the `settings.json` for the detected scope.
-2. If it already has a `hooks` key, merge into it.
-3. If not, create the `hooks` key.
-
-Remember the chosen file — do NOT apply yet.
-
-**Plan the merge:**
-
-For each hook event type defined in `hooks.json` (currently: `PreToolUse`, `Notification`, `PermissionRequest`, `PostToolUse`, `PostToolUseFailure`, `PreCompact`, `SessionStart`, `SessionEnd`):
-
-1. Look at the target file's existing array for that event type (may be absent or may contain entries for other tools).
-2. For each handoff hook entry in `hooks.json` (with paths adjusted for install scope), check whether an entry with the **same `command` string** already exists in the array.
-3. If it does not exist, append it to the array. If it already exists, skip (idempotent).
-
-This ensures existing non-handoff hooks are preserved and handoff hooks are never duplicated.
-
-Note which event types need a new array created vs. which need entries appended. Apply these edits only in the **Apply** phase below.
+Review the JSON output to confirm scope and which hooks were added. Remember the target file path for the summary table.
 
 ## After setup
 
@@ -226,7 +192,7 @@ lark_im.save_credentials(
 "
 ```
 
-Apply hooks to the chosen settings file (Step 4) using the Edit tool.
+Apply hooks by running: `python3 "$SKILL_SCRIPTS/install_hooks.py"`
 
 Then re-run the preflight check to confirm everything passes.
 

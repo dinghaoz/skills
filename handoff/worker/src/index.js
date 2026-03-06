@@ -538,6 +538,14 @@ async function handleMessage(event, env) {
     } catch {
       text = "[post]";
     }
+  } else if (msg_type === "sticker") {
+    try {
+      const content = JSON.parse(message.content || "{}");
+      file_key = content.file_key || "";
+    } catch {
+      // ignore parse errors
+    }
+    text = "[sticker]";
   } else if (msg_type === "merge_forward") {
     // Merge-forwarded conversation thread — store the message_id so the
     // client can call the Lark API to read child messages.

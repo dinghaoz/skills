@@ -145,6 +145,8 @@ const formatBashToolEvent = (type, props, maxBody) => {
     payload?.description,
   )
 
+  // Guard: bail on empty/falsy command (prevents blank error cards)
+  if (!command) return null
   if (isToolInfraCommand(command)) return null
 
   const result = payload?.result || payload?.output || payload?.toolResponse || payload
