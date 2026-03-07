@@ -28,6 +28,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
 import lark_im
 from send_to_group import (
     create_handoff_group,
@@ -164,7 +166,7 @@ def main():
     session_id = os.environ["HANDOFF_SESSION_ID"]
 
     # ── Step A: session-check ──────────────────────────────────────────────
-    session = lark_im.get_session(session_id)
+    session = handoff_db.get_session(session_id)
     if session:
         _jprint({
             "status": "already_active",
@@ -175,17 +177,17 @@ def main():
         return 0
 
     # ── Step B: discover ──────────────────────────────────────────────────
-    creds = lark_im.load_credentials()
+    creds = handoff_config.load_credentials()
     if not creds:
         _jprint({"error": "no_credentials"})
         return 1
     token = lark_im.get_tenant_token(creds["app_id"], creds["app_secret"])
     email = creds.get("email", "")
     open_id = lark_im.lookup_open_id_by_email(token, email) if email else ""
-    workspace_id = lark_im.get_workspace_id()
+    workspace_id = handoff_config.get_workspace_id()
     groups = find_groups_for_workspace(token, workspace_id, open_id or None)
-    lark_im.prune_stale_sessions()
-    sessions = lark_im.get_active_sessions()
+    handoff_db.prune_stale_sessions()
+    sessions = handoff_db.get_active_sessions()
     session_by_chat = {s["chat_id"]: s for s in sessions}
 
     enriched = []
@@ -209,7 +211,7 @@ def main():
     if args.mode == "new":
         # Always create a new group
         existing_names = [g["name"] for g in enriched]
-        machine = lark_im._get_machine_name()
+        machine = handoff_config._get_machine_name()
         worktree = get_worktree_name()
         chat_id_to_activate = create_handoff_group(
             token, open_id, worktree, machine, existing_names, workspace_id=workspace_id
@@ -221,7 +223,7 @@ def main():
             chat_id_to_activate = best["chat_id"]
         else:
             existing_names = [g["name"] for g in enriched]
-            machine = lark_im._get_machine_name()
+            machine = handoff_config._get_machine_name()
             worktree = get_worktree_name()
             chat_id_to_activate = create_handoff_group(
                 token, open_id, worktree, machine, existing_names, workspace_id=workspace_id
@@ -231,7 +233,7 @@ def main():
         n = len(enriched)
         if n == 0:
             # Auto-create
-            machine = lark_im._get_machine_name()
+            machine = handoff_config._get_machine_name()
             worktree = get_worktree_name()
             chat_id_to_activate = create_handoff_group(
                 token, open_id, worktree, machine, [], workspace_id=workspace_id
@@ -272,7 +274,7 @@ def main():
     except Exception:
         pass
 
-    lark_im.activate_handoff(
+    handoff_db.activate_handoff(
         session_id,
         chat_id_to_activate,
         session_model=model,

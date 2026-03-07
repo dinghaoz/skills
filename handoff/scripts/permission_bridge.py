@@ -16,6 +16,8 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_db
+import handoff_worker
 import lark_im
 from permission_core import (  # type: ignore
     prepare_permission_request,
@@ -127,14 +129,14 @@ def format_tool_description(tool_name, tool_input):
 
 def _poll_worker(worker_url, chat_id, since, key=None):
     try:
-        result = lark_im.poll_worker_ws(worker_url, chat_id, since, key=key)
+        result = handoff_worker.poll_worker_ws(worker_url, chat_id, since, key=key)
         error = result.get("error")
         if error:
             raise Exception(error)
         return result
     except Exception as e:
         warn(f"WebSocket error: {e} — falling back to HTTP")
-        return lark_im.poll_worker(worker_url, chat_id, since, key=key)
+        return handoff_worker.poll_worker(worker_url, chat_id, since, key=key)
 
 
 def deny_and_exit(tool_name, reason=""):
@@ -225,7 +227,7 @@ def main():
     _log(f"active: chat_id={chat_id}")
 
     # Resolve operator_open_id and coowner approvers from session
-    session = lark_im.get_session(session_id)
+    session = handoff_db.get_session(session_id)
     operator_open_id = session.get("operator_open_id", "") if session else ""
     approver_ids = {operator_open_id} if operator_open_id else set()
     if session:
@@ -241,7 +243,7 @@ def main():
             chat_id,
             tool_name,
             message,
-            ack_fn=lambda key, before: lark_im.ack_worker_replies(
+            ack_fn=lambda key, before: handoff_worker.ack_worker_replies(
                 worker_url, chat_id, before, key=key
             ),
             log_fn=warn,
@@ -260,11 +262,11 @@ def main():
         poll_fn=lambda chat_id, since: _poll_worker(
             worker_url, chat_id, since, key=nonce
         ),
-        ack_fn=lambda chat_id, before: lark_im.ack_worker_replies(
+        ack_fn=lambda chat_id, before: handoff_worker.ack_worker_replies(
             worker_url, chat_id, before, key=nonce
         ),
-        record_received_fn=lark_im.record_received_message,
-        set_last_checked_fn=lark_im.set_session_last_checked,
+        record_received_fn=handoff_db.record_received_message,
+        set_last_checked_fn=handoff_db.set_session_last_checked,
         on_deny_fn=on_deny,
         chat_id=chat_id,
         session_id=session_id,

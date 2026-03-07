@@ -19,22 +19,22 @@ import on_notification  # type: ignore
 
 class OnNotificationTest(unittest.TestCase):
     def setUp(self):
-        self._orig_get_session = on_notification.lark_im.get_session
-        self._orig_load_creds = on_notification.lark_im.load_credentials
+        self._orig_get_session = on_notification.handoff_db.get_session
+        self._orig_load_creds = on_notification.handoff_config.load_credentials
         self._orig_get_token = on_notification.lark_im.get_tenant_token
         self._orig_build_card = on_notification.lark_im.build_markdown_card
         self._orig_send_msg = on_notification.lark_im.send_message
-        self._orig_record = on_notification.lark_im.record_sent_message
-        self._orig_worktree = on_notification.lark_im.get_worktree_name
+        self._orig_record = on_notification.handoff_db.record_sent_message
+        self._orig_worktree = on_notification.handoff_config.get_worktree_name
 
     def tearDown(self):
-        on_notification.lark_im.get_session = self._orig_get_session
-        on_notification.lark_im.load_credentials = self._orig_load_creds
+        on_notification.handoff_db.get_session = self._orig_get_session
+        on_notification.handoff_config.load_credentials = self._orig_load_creds
         on_notification.lark_im.get_tenant_token = self._orig_get_token
         on_notification.lark_im.build_markdown_card = self._orig_build_card
         on_notification.lark_im.send_message = self._orig_send_msg
-        on_notification.lark_im.record_sent_message = self._orig_record
-        on_notification.lark_im.get_worktree_name = self._orig_worktree
+        on_notification.handoff_db.record_sent_message = self._orig_record
+        on_notification.handoff_config.get_worktree_name = self._orig_worktree
 
     def _run_main(self, hook_input):
         old_stdin, old_stdout, old_stderr = sys.stdin, sys.stdout, sys.stderr
@@ -54,7 +54,7 @@ class OnNotificationTest(unittest.TestCase):
     def test_no_session_returns_early(self):
         """No active session → return without sending anything."""
         sent = []
-        on_notification.lark_im.get_session = lambda sid: None
+        on_notification.handoff_db.get_session = lambda sid: None
         on_notification.lark_im.send_message = lambda *a, **kw: sent.append(1)
 
         self._run_main({"session_id": "s1", "notification_type": "elicitation_dialog", "message": "hi"})
@@ -62,7 +62,7 @@ class OnNotificationTest(unittest.TestCase):
 
     def test_empty_session_id_returns_early(self):
         sent = []
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
         on_notification.lark_im.send_message = lambda *a, **kw: sent.append(1)
 
         self._run_main({"session_id": "", "notification_type": "elicitation_dialog", "message": "hi"})
@@ -71,7 +71,7 @@ class OnNotificationTest(unittest.TestCase):
     def test_permission_prompt_returns_early(self):
         """permission_prompt is handled by permission_bridge, not here."""
         sent = []
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
         on_notification.lark_im.send_message = lambda *a, **kw: sent.append(1)
 
         self._run_main({
@@ -85,7 +85,7 @@ class OnNotificationTest(unittest.TestCase):
 
     def test_idle_prompt_prints_recovery(self):
         """idle_prompt outputs recovery instructions to stdout."""
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
 
         stdout, _ = self._run_main({
             "session_id": "s1",
@@ -101,19 +101,19 @@ class OnNotificationTest(unittest.TestCase):
     def test_normal_notification_sends_card(self):
         """Normal notification type sends a markdown card to Lark."""
         sent = []
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_notification.lark_im.load_credentials = lambda: {
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         on_notification.lark_im.get_tenant_token = lambda a, b: "tok"
-        on_notification.lark_im.get_worktree_name = lambda: "my-branch"
+        on_notification.handoff_config.get_worktree_name = lambda: "my-branch"
         on_notification.lark_im.build_markdown_card = (
             lambda msg, title=None, color=None: {"title": title, "body": msg, "color": color}
         )
         on_notification.lark_im.send_message = lambda tok, cid, card: (
             sent.append({"token": tok, "chat_id": cid, "card": card}) or "msg-1"
         )
-        on_notification.lark_im.record_sent_message = lambda *a, **kw: None
+        on_notification.handoff_db.record_sent_message = lambda *a, **kw: None
 
         self._run_main({
             "session_id": "s1",
@@ -127,18 +127,18 @@ class OnNotificationTest(unittest.TestCase):
         self.assertEqual(sent[0]["card"]["color"], "purple")  # elicitation_dialog
 
     def test_elicitation_dialog_uses_purple(self):
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_notification.lark_im.load_credentials = lambda: {
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         on_notification.lark_im.get_tenant_token = lambda a, b: "tok"
-        on_notification.lark_im.get_worktree_name = lambda: "wt"
+        on_notification.handoff_config.get_worktree_name = lambda: "wt"
         cards = []
         on_notification.lark_im.build_markdown_card = (
             lambda msg, title=None, color=None: cards.append(color) or {}
         )
         on_notification.lark_im.send_message = lambda *a, **kw: "m1"
-        on_notification.lark_im.record_sent_message = lambda *a, **kw: None
+        on_notification.handoff_db.record_sent_message = lambda *a, **kw: None
 
         self._run_main({
             "session_id": "s1",
@@ -150,8 +150,8 @@ class OnNotificationTest(unittest.TestCase):
     # -- Error handling --
 
     def test_no_credentials_returns_silently(self):
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_notification.lark_im.load_credentials = lambda: None
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_config.load_credentials = lambda: None
         sent = []
         on_notification.lark_im.send_message = lambda *a, **kw: sent.append(1)
 
@@ -163,8 +163,8 @@ class OnNotificationTest(unittest.TestCase):
         self.assertEqual(len(sent), 0)
 
     def test_token_error_returns_silently(self):
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_notification.lark_im.load_credentials = lambda: {
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
 
@@ -184,12 +184,12 @@ class OnNotificationTest(unittest.TestCase):
         self.assertIn("auth fail", stderr)
 
     def test_send_failure_logs_to_stderr(self):
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_notification.lark_im.load_credentials = lambda: {
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         on_notification.lark_im.get_tenant_token = lambda a, b: "tok"
-        on_notification.lark_im.get_worktree_name = lambda: "wt"
+        on_notification.handoff_config.get_worktree_name = lambda: "wt"
         on_notification.lark_im.build_markdown_card = lambda *a, **kw: {}
 
         def fail_send(*a, **kw):
@@ -205,19 +205,19 @@ class OnNotificationTest(unittest.TestCase):
         self.assertIn("network", stderr)
 
     def test_record_failure_does_not_crash(self):
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_notification.lark_im.load_credentials = lambda: {
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         on_notification.lark_im.get_tenant_token = lambda a, b: "tok"
-        on_notification.lark_im.get_worktree_name = lambda: "wt"
+        on_notification.handoff_config.get_worktree_name = lambda: "wt"
         on_notification.lark_im.build_markdown_card = lambda *a, **kw: {}
         on_notification.lark_im.send_message = lambda *a, **kw: "m1"
 
         def fail_record(*a, **kw):
             raise RuntimeError("db error")
 
-        on_notification.lark_im.record_sent_message = fail_record
+        on_notification.handoff_db.record_sent_message = fail_record
 
         _, stderr = self._run_main({
             "session_id": "s1",
@@ -228,7 +228,7 @@ class OnNotificationTest(unittest.TestCase):
 
     def test_invalid_json_stdin(self):
         """Malformed JSON defaults to empty dict, no session → early return."""
-        on_notification.lark_im.get_session = lambda sid: None
+        on_notification.handoff_db.get_session = lambda sid: None
 
         old_stdin, old_stdout, old_stderr = sys.stdin, sys.stdout, sys.stderr
         sys.stdin = io.StringIO("not json!!!")
@@ -246,18 +246,18 @@ class OnNotificationTest(unittest.TestCase):
 
     def test_default_message(self):
         """Missing message field uses default text."""
-        on_notification.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_notification.lark_im.load_credentials = lambda: {
+        on_notification.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_notification.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         on_notification.lark_im.get_tenant_token = lambda a, b: "tok"
-        on_notification.lark_im.get_worktree_name = lambda: "wt"
+        on_notification.handoff_config.get_worktree_name = lambda: "wt"
         bodies = []
         on_notification.lark_im.build_markdown_card = (
             lambda msg, title=None, color=None: bodies.append(msg) or {}
         )
         on_notification.lark_im.send_message = lambda *a, **kw: "m1"
-        on_notification.lark_im.record_sent_message = lambda *a, **kw: None
+        on_notification.handoff_db.record_sent_message = lambda *a, **kw: None
 
         self._run_main({"session_id": "s1", "notification_type": "elicitation_dialog"})
         self.assertIn("attention", bodies[0])

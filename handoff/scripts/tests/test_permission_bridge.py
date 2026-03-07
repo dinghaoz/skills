@@ -14,6 +14,7 @@ SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
 
 import permission_bridge  # type: ignore
+import permission_core  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -164,31 +165,31 @@ class MainTest(unittest.TestCase):
 
     def setUp(self):
         # Save originals
-        self._orig_get_session = permission_bridge.lark_im.get_session
-        self._orig_load_creds = permission_bridge.lark_im.load_credentials
+        self._orig_get_session = permission_core.handoff_db.get_session
+        self._orig_load_creds = permission_core.handoff_config.load_credentials
         self._orig_get_token = permission_bridge.lark_im.get_tenant_token
-        self._orig_load_worker = permission_bridge.lark_im.load_worker_url
-        self._orig_ack = permission_bridge.lark_im.ack_worker_replies
+        self._orig_load_worker = permission_core.handoff_config.load_worker_url
+        self._orig_ack = permission_bridge.handoff_worker.ack_worker_replies
         self._orig_send_msg = permission_bridge.lark_im.send_message
         self._orig_build_card = permission_bridge.lark_im.build_card
-        self._orig_record = permission_bridge.lark_im.record_received_message
-        self._orig_set_lc = permission_bridge.lark_im.set_session_last_checked
-        self._orig_poll_ws = permission_bridge.lark_im.poll_worker_ws
-        self._orig_poll = getattr(permission_bridge.lark_im, "poll_worker", None)
+        self._orig_record = permission_bridge.handoff_db.record_received_message
+        self._orig_set_lc = permission_bridge.handoff_db.set_session_last_checked
+        self._orig_poll_ws = permission_bridge.handoff_worker.poll_worker_ws
+        self._orig_poll = getattr(permission_bridge.handoff_worker, "poll_worker", None)
 
     def tearDown(self):
-        permission_bridge.lark_im.get_session = self._orig_get_session
-        permission_bridge.lark_im.load_credentials = self._orig_load_creds
+        permission_core.handoff_db.get_session = self._orig_get_session
+        permission_core.handoff_config.load_credentials = self._orig_load_creds
         permission_bridge.lark_im.get_tenant_token = self._orig_get_token
-        permission_bridge.lark_im.load_worker_url = self._orig_load_worker
-        permission_bridge.lark_im.ack_worker_replies = self._orig_ack
+        permission_core.handoff_config.load_worker_url = self._orig_load_worker
+        permission_bridge.handoff_worker.ack_worker_replies = self._orig_ack
         permission_bridge.lark_im.send_message = self._orig_send_msg
         permission_bridge.lark_im.build_card = self._orig_build_card
-        permission_bridge.lark_im.record_received_message = self._orig_record
-        permission_bridge.lark_im.set_session_last_checked = self._orig_set_lc
-        permission_bridge.lark_im.poll_worker_ws = self._orig_poll_ws
+        permission_bridge.handoff_db.record_received_message = self._orig_record
+        permission_bridge.handoff_db.set_session_last_checked = self._orig_set_lc
+        permission_bridge.handoff_worker.poll_worker_ws = self._orig_poll_ws
         if self._orig_poll is not None:
-            permission_bridge.lark_im.poll_worker = self._orig_poll
+            permission_bridge.handoff_worker.poll_worker = self._orig_poll
 
     def _run_main(self, hook_input):
         old_stdin = sys.stdin
@@ -209,7 +210,7 @@ class MainTest(unittest.TestCase):
 
     def test_no_session_exits_1(self):
         """No active handoff → exit(1) to fall through to CLI prompt."""
-        permission_bridge.lark_im.get_session = lambda sid: None
+        permission_core.handoff_db.get_session = lambda sid: None
         _, exit_code = self._run_main(
             {"tool_name": "Bash", "tool_input": {}, "session_id": "gone"}
         )
@@ -222,8 +223,8 @@ class MainTest(unittest.TestCase):
         self.assertEqual(exit_code, 1)
 
     def test_no_credentials_denies(self):
-        permission_bridge.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        permission_bridge.lark_im.load_credentials = lambda: None
+        permission_core.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        permission_core.handoff_config.load_credentials = lambda: None
         output, exit_code = self._run_main(
             {"tool_name": "Bash", "tool_input": {}, "session_id": "s1"}
         )
@@ -233,18 +234,18 @@ class MainTest(unittest.TestCase):
 
     def test_allow_decision(self):
         """Full allow flow: session active → card sent → user approves."""
-        permission_bridge.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        permission_bridge.lark_im.load_credentials = lambda: {
+        permission_core.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        permission_core.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         permission_bridge.lark_im.get_tenant_token = lambda a, b: "tok"
-        permission_bridge.lark_im.load_worker_url = lambda: "https://w.example"
-        permission_bridge.lark_im.ack_worker_replies = lambda *a, **kw: None
+        permission_core.handoff_config.load_worker_url = lambda: "https://w.example"
+        permission_bridge.handoff_worker.ack_worker_replies = lambda *a, **kw: None
         permission_bridge.lark_im.send_message = lambda *a, **kw: "msg-1"
         permission_bridge.lark_im.build_card = lambda *a, **kw: {}
-        permission_bridge.lark_im.record_received_message = lambda **kw: None
-        permission_bridge.lark_im.set_session_last_checked = lambda *a: None
-        permission_bridge.lark_im.poll_worker_ws = lambda *a, **kw: {
+        permission_bridge.handoff_db.record_received_message = lambda **kw: None
+        permission_bridge.handoff_db.set_session_last_checked = lambda *a: None
+        permission_bridge.handoff_worker.poll_worker_ws = lambda *a, **kw: {
             "replies": [{"text": "y", "create_time": "100", "message_id": "r1"}],
             "takeover": False,
             "error": None,
@@ -258,18 +259,18 @@ class MainTest(unittest.TestCase):
         self.assertEqual(data["hookSpecificOutput"]["decision"]["behavior"], "allow")
 
     def test_deny_decision(self):
-        permission_bridge.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        permission_bridge.lark_im.load_credentials = lambda: {
+        permission_core.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        permission_core.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         permission_bridge.lark_im.get_tenant_token = lambda a, b: "tok"
-        permission_bridge.lark_im.load_worker_url = lambda: "https://w.example"
-        permission_bridge.lark_im.ack_worker_replies = lambda *a, **kw: None
+        permission_core.handoff_config.load_worker_url = lambda: "https://w.example"
+        permission_bridge.handoff_worker.ack_worker_replies = lambda *a, **kw: None
         permission_bridge.lark_im.send_message = lambda *a, **kw: "msg-1"
         permission_bridge.lark_im.build_card = lambda *a, **kw: {}
-        permission_bridge.lark_im.record_received_message = lambda **kw: None
-        permission_bridge.lark_im.set_session_last_checked = lambda *a: None
-        permission_bridge.lark_im.poll_worker_ws = lambda *a, **kw: {
+        permission_bridge.handoff_db.record_received_message = lambda **kw: None
+        permission_bridge.handoff_db.set_session_last_checked = lambda *a: None
+        permission_bridge.handoff_worker.poll_worker_ws = lambda *a, **kw: {
             "replies": [{"text": "n", "create_time": "100", "message_id": "r1"}],
             "takeover": False,
             "error": None,
@@ -284,18 +285,18 @@ class MainTest(unittest.TestCase):
 
     def test_always_decision_passes_updated_permissions(self):
         """'Approve All' returns allow + updatedPermissions from suggestions."""
-        permission_bridge.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        permission_bridge.lark_im.load_credentials = lambda: {
+        permission_core.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        permission_core.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         permission_bridge.lark_im.get_tenant_token = lambda a, b: "tok"
-        permission_bridge.lark_im.load_worker_url = lambda: "https://w.example"
-        permission_bridge.lark_im.ack_worker_replies = lambda *a, **kw: None
+        permission_core.handoff_config.load_worker_url = lambda: "https://w.example"
+        permission_bridge.handoff_worker.ack_worker_replies = lambda *a, **kw: None
         permission_bridge.lark_im.send_message = lambda *a, **kw: "msg-1"
         permission_bridge.lark_im.build_card = lambda *a, **kw: {}
-        permission_bridge.lark_im.record_received_message = lambda **kw: None
-        permission_bridge.lark_im.set_session_last_checked = lambda *a: None
-        permission_bridge.lark_im.poll_worker_ws = lambda *a, **kw: {
+        permission_bridge.handoff_db.record_received_message = lambda **kw: None
+        permission_bridge.handoff_db.set_session_last_checked = lambda *a: None
+        permission_bridge.handoff_worker.poll_worker_ws = lambda *a, **kw: {
             "replies": [{"text": "always", "create_time": "100", "message_id": "r1"}],
             "takeover": False,
             "error": None,
@@ -318,18 +319,18 @@ class MainTest(unittest.TestCase):
 
     def test_always_decision_without_suggestions(self):
         """'Approve All' without suggestions still returns allow (no updatedPermissions)."""
-        permission_bridge.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        permission_bridge.lark_im.load_credentials = lambda: {
+        permission_core.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        permission_core.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         permission_bridge.lark_im.get_tenant_token = lambda a, b: "tok"
-        permission_bridge.lark_im.load_worker_url = lambda: "https://w.example"
-        permission_bridge.lark_im.ack_worker_replies = lambda *a, **kw: None
+        permission_core.handoff_config.load_worker_url = lambda: "https://w.example"
+        permission_bridge.handoff_worker.ack_worker_replies = lambda *a, **kw: None
         permission_bridge.lark_im.send_message = lambda *a, **kw: "msg-1"
         permission_bridge.lark_im.build_card = lambda *a, **kw: {}
-        permission_bridge.lark_im.record_received_message = lambda **kw: None
-        permission_bridge.lark_im.set_session_last_checked = lambda *a: None
-        permission_bridge.lark_im.poll_worker_ws = lambda *a, **kw: {
+        permission_bridge.handoff_db.record_received_message = lambda **kw: None
+        permission_bridge.handoff_db.set_session_last_checked = lambda *a: None
+        permission_bridge.handoff_worker.poll_worker_ws = lambda *a, **kw: {
             "replies": [{"text": "always", "create_time": "100", "message_id": "r1"}],
             "takeover": False,
             "error": None,
@@ -347,13 +348,13 @@ class MainTest(unittest.TestCase):
         self.assertNotIn("updatedPermissions", data["hookSpecificOutput"]["decision"])
 
     def test_card_send_failure_denies(self):
-        permission_bridge.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        permission_bridge.lark_im.load_credentials = lambda: {
+        permission_core.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        permission_core.handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "b"
         }
         permission_bridge.lark_im.get_tenant_token = lambda a, b: "tok"
-        permission_bridge.lark_im.load_worker_url = lambda: "https://w.example"
-        permission_bridge.lark_im.ack_worker_replies = lambda *a, **kw: None
+        permission_core.handoff_config.load_worker_url = lambda: "https://w.example"
+        permission_bridge.handoff_worker.ack_worker_replies = lambda *a, **kw: None
         permission_bridge.lark_im.build_card = lambda *a, **kw: {}
 
         def fail_send(*a, **kw):
@@ -378,7 +379,7 @@ class MainTest(unittest.TestCase):
         sys.stderr = io.StringIO()
 
         # No session → exit(1) (since session_id defaults to "")
-        permission_bridge.lark_im.get_session = lambda sid: None
+        permission_core.handoff_db.get_session = lambda sid: None
         try:
             permission_bridge.main()
             stdout_val = sys.stdout.getvalue()

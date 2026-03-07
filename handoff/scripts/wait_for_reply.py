@@ -19,6 +19,9 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
+import handoff_worker
 import lark_im
 
 
@@ -89,7 +92,7 @@ def filter_bot_interactions(replies, bot_open_id):
 
         # Condition 2: reply to a bot-sent message
         parent_id = r.get("parent_id", "")
-        is_reply_to_bot = bool(parent_id) and lark_im.is_bot_sent_message(parent_id)
+        is_reply_to_bot = bool(parent_id) and handoff_db.is_bot_sent_message(parent_id)
 
         if not is_mentioned and not is_reply_to_bot:
             continue
@@ -110,7 +113,7 @@ def filter_bot_interactions(replies, bot_open_id):
 
 def fetch_replies_http(worker_url, chat_id, since):
     """HTTP long-poll the worker for replies. Returns (replies, takeover, error)."""
-    result = lark_im.poll_worker(worker_url, chat_id, since)
+    result = handoff_worker.poll_worker(worker_url, chat_id, since)
     return result["replies"], result["takeover"], result["error"]
 
 
@@ -118,7 +121,7 @@ def handle_result(replies, worker_url, chat_id, session_id):
     """Update last_checked and output reply JSON."""
     for r in replies:
         try:
-            lark_im.record_received_message(
+            handoff_db.record_received_message(
                 chat_id=chat_id,
                 text=r.get("text", ""),
                 title="",
@@ -131,7 +134,7 @@ def handle_result(replies, worker_url, chat_id, session_id):
     last_checked = replies[-1]["create_time"]
     if session_id:
         try:
-            lark_im.set_session_last_checked(session_id, last_checked)
+            handoff_db.set_session_last_checked(session_id, last_checked)
         except Exception as e:
             warn(f"failed to persist last_checked for session {session_id}: {e}")
     json.dump({"replies": replies, "count": len(replies)}, sys.stdout)
@@ -175,17 +178,17 @@ def main():
 
     # Apply model-based default timeout if not explicitly provided
     if args.timeout is None:
-        args.timeout = lark_im.default_poll_timeout(session)
+        args.timeout = handoff_db.default_poll_timeout(session)
 
     # Check for unprocessed messages (received but never processed by Claude,
     # e.g. after an API crash). Replay them before polling the worker.
-    unprocessed = lark_im.get_unprocessed_messages(chat_id)
+    unprocessed = handoff_db.get_unprocessed_messages(chat_id)
     if unprocessed:
         warn(f"replaying {len(unprocessed)} unprocessed message(s)")
         json.dump({"replies": unprocessed, "count": len(unprocessed)}, sys.stdout)
         return
 
-    worker_url = lark_im.load_worker_url()
+    worker_url = handoff_config.load_worker_url()
     if not worker_url:
         json.dump({"error": "no_worker_url"}, sys.stdout)
         return
@@ -203,7 +206,7 @@ def main():
         # --- Try WebSocket first (much lower quota usage) ---
         if use_ws:
             try:
-                result = lark_im.poll_worker_ws(worker_url, chat_id, since)
+                result = handoff_worker.poll_worker_ws(worker_url, chat_id, since)
                 if result.get("takeover"):
                     json.dump({"takeover": True}, sys.stdout)
                     return
@@ -256,7 +259,7 @@ def main():
             if replies:
                 # Ack processed replies via HTTP (WS already acks inline)
                 last_checked = replies[-1]["create_time"]
-                lark_im.ack_worker_replies(worker_url, chat_id, last_checked)
+                handoff_worker.ack_worker_replies(worker_url, chat_id, last_checked)
                 if member_roles:
                     replies = filter_by_allowed_senders(
                         replies, operator_open_id, member_roles)

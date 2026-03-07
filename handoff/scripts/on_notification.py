@@ -11,6 +11,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
 import lark_im
 
 COLORS = {
@@ -39,7 +41,7 @@ def main():
 
     # Check if this session has an active handoff
     session_id = hook_input.get("session_id", "")
-    session = lark_im.get_session(session_id) if session_id else None
+    session = handoff_db.get_session(session_id) if session_id else None
     if not session:
         return  # No active handoff for this session
 
@@ -78,10 +80,10 @@ def main():
     chat_id = session["chat_id"]
 
     color = COLORS.get(notification_type, "blue")
-    prefix = lark_im.get_worktree_name()
+    prefix = handoff_config.get_worktree_name()
     title = f"[{prefix}] {message}"
 
-    credentials = lark_im.load_credentials()
+    credentials = handoff_config.load_credentials()
     if not credentials:
         return
 
@@ -100,7 +102,7 @@ def main():
     try:
         msg_id = lark_im.send_message(token, chat_id, card)
         try:
-            lark_im.record_sent_message(
+            handoff_db.record_sent_message(
                 msg_id, text=message, title=title, chat_id=chat_id
             )
         except Exception as e:

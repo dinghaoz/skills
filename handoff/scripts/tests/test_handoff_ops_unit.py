@@ -12,8 +12,9 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config  # type: ignore
+import handoff_db  # type: ignore
 import handoff_ops  # type: ignore
-import lark_im  # type: ignore
 
 
 class _Args:
@@ -37,9 +38,9 @@ class HandoffOpsUnitTest(unittest.TestCase):
         os.environ["HANDOFF_SESSION_TOOL"] = "Claude Code"
         os.environ.pop("HANDOFF_SESSION_ID", None)
 
-        self.db_path = lark_im._db_path()
-        lark_im._db_initialized.discard(self.db_path)
-        conn = lark_im._get_db()
+        self.db_path = handoff_db._db_path()
+        handoff_db._db_initialized.discard(self.db_path)
+        conn = handoff_db._get_db()
         conn.close()
 
     def tearDown(self):
@@ -67,9 +68,9 @@ class HandoffOpsUnitTest(unittest.TestCase):
 
     def test_config_current_returns_boolean_field(self):
         handoff_home = os.path.join(self.tmp.name, ".handoff")
-        old_home_dir = lark_im.HANDOFF_HOME
+        old_home_dir = handoff_config.HANDOFF_HOME
         try:
-            lark_im.HANDOFF_HOME = handoff_home
+            handoff_config.HANDOFF_HOME = handoff_home
             os.makedirs(handoff_home, exist_ok=True)
             with open(os.path.join(handoff_home, "config.json"), "w") as f:
                 f.write("{}")
@@ -84,10 +85,10 @@ class HandoffOpsUnitTest(unittest.TestCase):
             self.assertIsInstance(payload["config_exists"], bool)
             self.assertTrue(payload["config_exists"])
         finally:
-            lark_im.HANDOFF_HOME = old_home_dir
+            handoff_config.HANDOFF_HOME = old_home_dir
 
     def test_session_check_returns_zero_when_already_active(self):
-        lark_im.register_session("s1", "chat-1", "opus")
+        handoff_db.register_session("s1", "chat-1", "opus")
         os.environ["HANDOFF_SESSION_ID"] = "s1"
 
         out = io.StringIO()
@@ -141,7 +142,7 @@ class HandoffOpsUnitTest(unittest.TestCase):
         self.assertIn("- g2 (idle)", text)
 
     def test_session_tool_model_strips_prefix_before_slash(self):
-        lark_im.register_session("s1", "chat-1", "opus")
+        handoff_db.register_session("s1", "chat-1", "opus")
         os.environ["HANDOFF_SESSION_ID"] = "s1"
 
         args = _Args(session_model="opencode/k2p5")
@@ -151,7 +152,7 @@ class HandoffOpsUnitTest(unittest.TestCase):
         self.assertEqual(chat_id, "chat-1")
 
     def test_session_tool_model_keeps_name_without_slash(self):
-        lark_im.register_session("s1", "chat-1", "opus")
+        handoff_db.register_session("s1", "chat-1", "opus")
         os.environ["HANDOFF_SESSION_ID"] = "s1"
 
         args = _Args(session_model="claude-sonnet-4")

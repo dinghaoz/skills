@@ -16,6 +16,9 @@ import unittest
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
+import handoff_worker
 import lark_im
 import send_and_wait  # type: ignore
 
@@ -41,9 +44,9 @@ class ResolveSessionContextTest(unittest.TestCase):
         os.environ["HANDOFF_PROJECT_DIR"] = self.project_dir
         os.environ["HANDOFF_SESSION_TOOL"] = "Claude Code"
 
-        self.db_path = lark_im._db_path()
-        lark_im._db_initialized.discard(self.db_path)
-        conn = lark_im._get_db()
+        self.db_path = handoff_db._db_path()
+        handoff_db._db_initialized.discard(self.db_path)
+        conn = handoff_db._get_db()
         conn.close()
 
     def tearDown(self):
@@ -62,20 +65,20 @@ class ResolveSessionContextTest(unittest.TestCase):
     def test_no_session_id_raises(self):
         os.environ.pop("HANDOFF_SESSION_ID", None)
         # Mock credentials so we get past that check to the session ID check
-        orig_load = lark_im.load_credentials
-        lark_im.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
+        orig_load = handoff_config.load_credentials
+        handoff_config.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
         try:
             with self.assertRaises(RuntimeError) as ctx:
                 lark_im.resolve_session_context()
             self.assertIn("HANDOFF_SESSION_ID", str(ctx.exception))
         finally:
-            lark_im.load_credentials = orig_load
+            handoff_config.load_credentials = orig_load
 
     def test_no_active_session_raises(self):
         os.environ["HANDOFF_SESSION_ID"] = "nonexistent"
         # Mock credentials so we don't fail there
-        orig_load = lark_im.load_credentials
-        lark_im.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
+        orig_load = handoff_config.load_credentials
+        handoff_config.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
         orig_token = lark_im.get_tenant_token
         lark_im.get_tenant_token = lambda a, b: "tok"
         try:
@@ -83,27 +86,27 @@ class ResolveSessionContextTest(unittest.TestCase):
                 lark_im.resolve_session_context()
             self.assertIn("No active session", str(ctx.exception))
         finally:
-            lark_im.load_credentials = orig_load
+            handoff_config.load_credentials = orig_load
             lark_im.get_tenant_token = orig_token
 
     def test_no_credentials_raises(self):
         os.environ["HANDOFF_SESSION_ID"] = "s1"
-        orig_load = lark_im.load_credentials
-        lark_im.load_credentials = lambda: None
+        orig_load = handoff_config.load_credentials
+        handoff_config.load_credentials = lambda: None
         try:
             with self.assertRaises(RuntimeError) as ctx:
                 lark_im.resolve_session_context()
             self.assertIn("credentials", str(ctx.exception).lower())
         finally:
-            lark_im.load_credentials = orig_load
+            handoff_config.load_credentials = orig_load
 
     def test_success(self):
         os.environ["HANDOFF_SESSION_ID"] = "s1"
-        lark_im.register_session("s1", "chat-1", "opus")
+        handoff_db.register_session("s1", "chat-1", "opus")
 
-        orig_load = lark_im.load_credentials
+        orig_load = handoff_config.load_credentials
         orig_token = lark_im.get_tenant_token
-        lark_im.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
+        handoff_config.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
         lark_im.get_tenant_token = lambda a, b: "tok"
         try:
             ctx = lark_im.resolve_session_context()
@@ -112,7 +115,7 @@ class ResolveSessionContextTest(unittest.TestCase):
             self.assertEqual(ctx["chat_id"], "chat-1")
             self.assertIn("session", ctx)
         finally:
-            lark_im.load_credentials = orig_load
+            handoff_config.load_credentials = orig_load
             lark_im.get_tenant_token = orig_token
 
 
@@ -174,20 +177,20 @@ class SendAndWaitPhasesTest(unittest.TestCase):
 
     def setUp(self):
         self._orig_resolve = lark_im.resolve_session_context
-        self._orig_load_worker = lark_im.load_worker_url
-        self._orig_get_session = lark_im.get_session
-        self._orig_poll_ws = lark_im.poll_worker_ws
-        self._orig_ack = lark_im.ack_worker_replies
+        self._orig_load_worker = handoff_config.load_worker_url
+        self._orig_get_session = handoff_db.get_session
+        self._orig_poll_ws = handoff_worker.poll_worker_ws
+        self._orig_ack = handoff_worker.ack_worker_replies
         self._orig_send = send_and_wait.send_to_group.send
         self._orig_handle = send_and_wait.wait_for_reply.handle_result
         self._orig_fetch_http = send_and_wait.wait_for_reply.fetch_replies_http
 
     def tearDown(self):
         lark_im.resolve_session_context = self._orig_resolve
-        lark_im.load_worker_url = self._orig_load_worker
-        lark_im.get_session = self._orig_get_session
-        lark_im.poll_worker_ws = self._orig_poll_ws
-        lark_im.ack_worker_replies = self._orig_ack
+        handoff_config.load_worker_url = self._orig_load_worker
+        handoff_db.get_session = self._orig_get_session
+        handoff_worker.poll_worker_ws = self._orig_poll_ws
+        handoff_worker.ack_worker_replies = self._orig_ack
         send_and_wait.send_to_group.send = self._orig_send
         send_and_wait.wait_for_reply.handle_result = self._orig_handle
         send_and_wait.wait_for_reply.fetch_replies_http = self._orig_fetch_http
@@ -235,7 +238,7 @@ class SendAndWaitPhasesTest(unittest.TestCase):
             "session": {"chat_id": "c1"},
         }
         send_and_wait.send_to_group.send = lambda *a, **kw: sent.append(1)
-        lark_im.load_worker_url = lambda: None
+        handoff_config.load_worker_url = lambda: None
 
         output = self._run(["hello"])
         data = json.loads(output)
@@ -249,9 +252,9 @@ class SendAndWaitPhasesTest(unittest.TestCase):
             "session": {"chat_id": "c1"},
         }
         send_and_wait.send_to_group.send = lambda *a, **kw: sent.append(1)
-        lark_im.load_worker_url = lambda: "https://w.example"
-        lark_im.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
-        lark_im.poll_worker_ws = lambda *a, **kw: {
+        handoff_config.load_worker_url = lambda: "https://w.example"
+        handoff_db.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
+        handoff_worker.poll_worker_ws = lambda *a, **kw: {
             "replies": [], "takeover": True, "error": None,
         }
 
@@ -266,9 +269,9 @@ class SendAndWaitPhasesTest(unittest.TestCase):
             "session": {"chat_id": "c1"},
         }
         send_and_wait.send_to_group.send = lambda *a, **kw: None
-        lark_im.load_worker_url = lambda: "https://w.example"
-        lark_im.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
-        lark_im.poll_worker_ws = lambda *a, **kw: {
+        handoff_config.load_worker_url = lambda: "https://w.example"
+        handoff_db.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
+        handoff_worker.poll_worker_ws = lambda *a, **kw: {
             "replies": [{"text": "hi", "create_time": "200", "message_id": "r1"}],
             "takeover": False,
             "error": None,
@@ -287,10 +290,10 @@ class SendAndWaitPhasesTest(unittest.TestCase):
             "session": {"chat_id": "c1"},
         }
         send_and_wait.send_to_group.send = lambda *a, **kw: None
-        lark_im.load_worker_url = lambda: "https://w.example"
-        lark_im.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
+        handoff_config.load_worker_url = lambda: "https://w.example"
+        handoff_db.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
         # WS error forces HTTP fallback, which also returns no replies
-        lark_im.poll_worker_ws = lambda *a, **kw: (_ for _ in ()).throw(
+        handoff_worker.poll_worker_ws = lambda *a, **kw: (_ for _ in ()).throw(
             Exception("ws fail")
         )
         send_and_wait.wait_for_reply.fetch_replies_http = (
@@ -309,12 +312,12 @@ class SendAndWaitPhasesTest(unittest.TestCase):
             "session": {"chat_id": "c1"},
         }
         send_and_wait.send_to_group.send = lambda *a, **kw: None
-        lark_im.load_worker_url = lambda: "https://w.example"
-        lark_im.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
-        lark_im.ack_worker_replies = lambda *a, **kw: None
+        handoff_config.load_worker_url = lambda: "https://w.example"
+        handoff_db.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
+        handoff_worker.ack_worker_replies = lambda *a, **kw: None
 
         # WS always errors, HTTP returns replies
-        lark_im.poll_worker_ws = lambda *a, **kw: (_ for _ in ()).throw(
+        handoff_worker.poll_worker_ws = lambda *a, **kw: (_ for _ in ()).throw(
             Exception("ws fail")
         )
         send_and_wait.wait_for_reply.fetch_replies_http = (
@@ -338,10 +341,10 @@ class SendAndWaitPhasesTest(unittest.TestCase):
             "session": {"chat_id": "c1"},
         }
         send_and_wait.send_to_group.send = lambda *a, **kw: None
-        lark_im.load_worker_url = lambda: "https://w.example"
-        lark_im.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
+        handoff_config.load_worker_url = lambda: "https://w.example"
+        handoff_db.get_session = lambda sid: {"chat_id": "c1", "last_checked": "100"}
 
-        lark_im.poll_worker_ws = lambda *a, **kw: (_ for _ in ()).throw(
+        handoff_worker.poll_worker_ws = lambda *a, **kw: (_ for _ in ()).throw(
             Exception("ws fail")
         )
         send_and_wait.wait_for_reply.fetch_replies_http = (

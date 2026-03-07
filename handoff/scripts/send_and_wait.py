@@ -18,6 +18,9 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
+import handoff_worker
 import lark_im
 import send_to_group
 import wait_for_reply
@@ -81,7 +84,7 @@ def main():
 
     # Apply model-based default timeout if not explicitly provided
     if args.timeout is None:
-        args.timeout = lark_im.default_poll_timeout(ctx.get("session"))
+        args.timeout = handoff_db.default_poll_timeout(ctx.get("session"))
 
     # In sidecar mode, @-mention the target user so they get notified.
     # --mention-user-id overrides (for guest replies); otherwise default to operator.
@@ -104,13 +107,13 @@ def main():
     warn("Response sent. Waiting for next message...")
 
     # --- Wait phase (reuse wait_for_reply logic) ---
-    worker_url = lark_im.load_worker_url()
+    worker_url = handoff_config.load_worker_url()
     if not worker_url:
         json.dump({"error": "no_worker_url"}, sys.stdout)
         return
 
     # Re-read session to get fresh last_checked, operator_open_id, bot_open_id, sidecar_mode, guests
-    session = lark_im.get_session(session_id)
+    session = handoff_db.get_session(session_id)
     since = session.get("last_checked") if session else None
     operator_open_id = session.get("operator_open_id", "") if session else ""
     bot_open_id = session.get("bot_open_id", "") if session else ""
@@ -126,7 +129,7 @@ def main():
     while deadline is None or time.time() < deadline:
         # --- Try WebSocket first ---
         try:
-            result = lark_im.poll_worker_ws(worker_url, chat_id, since)
+            result = handoff_worker.poll_worker_ws(worker_url, chat_id, since)
             if result.get("takeover"):
                 json.dump({"takeover": True}, sys.stdout)
                 return
@@ -167,7 +170,7 @@ def main():
                 return
             if replies:
                 last_checked = replies[-1]["create_time"]
-                lark_im.ack_worker_replies(worker_url, chat_id, last_checked)
+                handoff_worker.ack_worker_replies(worker_url, chat_id, last_checked)
                 if member_roles:
                     replies = wait_for_reply.filter_by_allowed_senders(
                         replies, operator_open_id, member_roles)

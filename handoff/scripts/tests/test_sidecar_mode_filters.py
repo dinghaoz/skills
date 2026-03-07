@@ -17,7 +17,7 @@ import unittest
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
 
-import lark_im
+import handoff_db
 import wait_for_reply
 
 
@@ -41,9 +41,9 @@ class _DbTestCase(unittest.TestCase):
         os.environ["HANDOFF_PROJECT_DIR"] = self.project_dir
         os.environ["HANDOFF_SESSION_TOOL"] = "Claude Code"
 
-        self.db_path = lark_im._db_path()
-        lark_im._db_initialized.discard(self.db_path)
-        conn = lark_im._get_db()
+        self.db_path = handoff_db._db_path()
+        handoff_db._db_initialized.discard(self.db_path)
+        conn = handoff_db._get_db()
         conn.close()
 
     def tearDown(self):
@@ -122,12 +122,12 @@ class FilterBotInteractionsTest(unittest.TestCase):
 
     def setUp(self):
         # Mock is_bot_sent_message to avoid needing a real DB
-        self._orig_is_bot = lark_im.is_bot_sent_message
+        self._orig_is_bot = handoff_db.is_bot_sent_message
         self._bot_sent_ids = set()
-        lark_im.is_bot_sent_message = lambda mid: mid in self._bot_sent_ids
+        handoff_db.is_bot_sent_message = lambda mid: mid in self._bot_sent_ids
 
     def tearDown(self):
-        lark_im.is_bot_sent_message = self._orig_is_bot
+        handoff_db.is_bot_sent_message = self._orig_is_bot
 
     # --- Condition 1: @-mention ---
 
@@ -306,14 +306,14 @@ class FilterBotInteractionsTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class IsBotSentMessageTest(_DbTestCase):
-    """Tests for lark_im.is_bot_sent_message()."""
+    """Tests for handoff_db.is_bot_sent_message()."""
 
     def test_sent_message_found_by_message_id(self):
         """Bot-sent message found by its primary message_id."""
-        lark_im.record_sent_message(
+        handoff_db.record_sent_message(
             "internal-1", text="hello", title="", chat_id="chat-1"
         )
-        self.assertTrue(lark_im.is_bot_sent_message("internal-1"))
+        self.assertTrue(handoff_db.is_bot_sent_message("internal-1"))
 
     def test_sent_message_found_by_source_message_id(self):
         """Bot-sent message found by its source_message_id column.
@@ -321,31 +321,31 @@ class IsBotSentMessageTest(_DbTestCase):
         record_sent_message stores message_id as both PK and source_message_id,
         so querying by source_message_id also matches.
         """
-        lark_im.record_sent_message(
+        handoff_db.record_sent_message(
             "lark-msg-id", text="hello", title="", chat_id="chat-1"
         )
         # is_bot_sent_message checks both message_id and source_message_id
-        self.assertTrue(lark_im.is_bot_sent_message("lark-msg-id"))
+        self.assertTrue(handoff_db.is_bot_sent_message("lark-msg-id"))
 
     def test_received_message_not_matched(self):
         """Received (non-bot) messages are not matched."""
-        lark_im.record_received_message(
+        handoff_db.record_received_message(
             chat_id="chat-1", text="user msg",
             source_message_id="user-msg-1", message_time=1700000000000
         )
-        self.assertFalse(lark_im.is_bot_sent_message("user-msg-1"))
+        self.assertFalse(handoff_db.is_bot_sent_message("user-msg-1"))
 
     def test_nonexistent_message_returns_false(self):
         """Unknown message_id returns False."""
-        self.assertFalse(lark_im.is_bot_sent_message("nonexistent"))
+        self.assertFalse(handoff_db.is_bot_sent_message("nonexistent"))
 
     def test_empty_message_id_returns_false(self):
         """Empty string returns False without DB query."""
-        self.assertFalse(lark_im.is_bot_sent_message(""))
+        self.assertFalse(handoff_db.is_bot_sent_message(""))
 
     def test_none_message_id_returns_false(self):
         """None returns False without DB query."""
-        self.assertFalse(lark_im.is_bot_sent_message(None))
+        self.assertFalse(handoff_db.is_bot_sent_message(None))
 
 
 # ---------------------------------------------------------------------------
@@ -357,52 +357,52 @@ class SessionBotFieldsTest(_DbTestCase):
 
     def test_register_session_stores_bot_open_id(self):
         """bot_open_id is stored and retrieved correctly."""
-        lark_im.register_session(
+        handoff_db.register_session(
             "s1", "chat-1", "opus", bot_open_id="ou_bot123"
         )
-        sess = lark_im.get_session("s1")
+        sess = handoff_db.get_session("s1")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["bot_open_id"], "ou_bot123")
 
     def test_register_session_stores_sidecar_mode(self):
         """sidecar_mode is stored and retrieved correctly."""
-        lark_im.register_session(
+        handoff_db.register_session(
             "s1", "chat-1", "opus", sidecar_mode=True
         )
-        sess = lark_im.get_session("s1")
+        sess = handoff_db.get_session("s1")
         self.assertIsNotNone(sess)
         self.assertTrue(sess["sidecar_mode"])
 
     def test_register_session_defaults_sidecar_mode_false(self):
         """sidecar_mode defaults to False when not specified."""
-        lark_im.register_session("s1", "chat-1", "opus")
-        sess = lark_im.get_session("s1")
+        handoff_db.register_session("s1", "chat-1", "opus")
+        sess = handoff_db.get_session("s1")
         self.assertIsNotNone(sess)
         self.assertFalse(sess["sidecar_mode"])
 
     def test_register_session_defaults_bot_open_id_empty(self):
         """bot_open_id defaults to empty string when not specified."""
-        lark_im.register_session("s1", "chat-1", "opus")
-        sess = lark_im.get_session("s1")
+        handoff_db.register_session("s1", "chat-1", "opus")
+        sess = handoff_db.get_session("s1")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["bot_open_id"], "")
 
     def test_register_session_stores_operator_open_id(self):
         """operator_open_id is stored and retrieved correctly."""
-        lark_im.register_session(
+        handoff_db.register_session(
             "s1", "chat-1", "opus", operator_open_id="ou_op456"
         )
-        sess = lark_im.get_session("s1")
+        sess = handoff_db.get_session("s1")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["operator_open_id"], "ou_op456")
 
     def test_activate_handoff_passes_bot_fields(self):
         """activate_handoff forwards sidecar_mode and bot_open_id to register_session."""
-        lark_im.activate_handoff(
+        handoff_db.activate_handoff(
             "s2", "chat-2", session_model="opus",
             operator_open_id="ou_op", bot_open_id="ou_bot", sidecar_mode=True,
         )
-        sess = lark_im.get_session("s2")
+        sess = handoff_db.get_session("s2")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["operator_open_id"], "ou_op")
         self.assertEqual(sess["bot_open_id"], "ou_bot")
@@ -410,24 +410,24 @@ class SessionBotFieldsTest(_DbTestCase):
 
     def test_takeover_preserves_bot_fields(self):
         """takeover_chat stores bot_open_id for the new session."""
-        lark_im.register_session("old", "chat-tk", "opus")
-        ok, owner, replaced = lark_im.takeover_chat(
+        handoff_db.register_session("old", "chat-tk", "opus")
+        ok, owner, replaced = handoff_db.takeover_chat(
             "new", "chat-tk", "sonnet",
             expected_owner_session_id="old",
             bot_open_id="ou_newbot",
         )
         self.assertTrue(ok)
-        sess = lark_im.get_session("new")
+        sess = handoff_db.get_session("new")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["bot_open_id"], "ou_newbot")
 
     def test_get_active_sessions_includes_bot_fields(self):
         """get_active_sessions returns sidecar_mode and bot_open_id."""
-        lark_im.register_session(
+        handoff_db.register_session(
             "s1", "chat-1", "opus",
             bot_open_id="ou_bot", sidecar_mode=True,
         )
-        sessions = lark_im.get_active_sessions()
+        sessions = handoff_db.get_active_sessions()
         self.assertEqual(len(sessions), 1)
         self.assertEqual(sessions[0]["bot_open_id"], "ou_bot")
         self.assertTrue(sessions[0]["sidecar_mode"])
@@ -441,12 +441,12 @@ class FilterChainIntegrationTest(unittest.TestCase):
     """Integration tests for the two-tier filter chain."""
 
     def setUp(self):
-        self._orig_is_bot = lark_im.is_bot_sent_message
+        self._orig_is_bot = handoff_db.is_bot_sent_message
         self._bot_sent_ids = set()
-        lark_im.is_bot_sent_message = lambda mid: mid in self._bot_sent_ids
+        handoff_db.is_bot_sent_message = lambda mid: mid in self._bot_sent_ids
 
     def tearDown(self):
-        lark_im.is_bot_sent_message = self._orig_is_bot
+        handoff_db.is_bot_sent_message = self._orig_is_bot
 
     def test_operator_then_bot_filter(self):
         """Messages are filtered by operator first, then by bot interaction."""

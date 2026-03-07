@@ -17,6 +17,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
 import lark_im
 
 # Max chars for card body (Lark card content limit is ~4096)
@@ -400,7 +402,7 @@ def _format_failure(tool_name, tool_input, error, cwd):
 
 def _get_token(session):
     """Get tenant token, returning (token, chat_id) or (None, None)."""
-    credentials = lark_im.load_credentials()
+    credentials = handoff_config.load_credentials()
     if not credentials:
         return None, None
     try:
@@ -425,7 +427,7 @@ def _send_card(session, title, body, color="grey"):
     try:
         msg_id = lark_im.send_message(token, chat_id, card)
         try:
-            lark_im.record_sent_message(
+            handoff_db.record_sent_message(
                 msg_id, text=body, title=title, chat_id=chat_id
             )
         except Exception:
@@ -471,7 +473,7 @@ def _send_or_update_working(session_id, session, tool_name, tool_input):
     with open(lock_path, "w") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         try:
-            existing_msg_id = lark_im.get_working_message(session_id)
+            existing_msg_id = handoff_db.get_working_message(session_id)
             if existing_msg_id:
                 try:
                     lark_im.update_card_message(token, existing_msg_id, card)
@@ -481,7 +483,7 @@ def _send_or_update_working(session_id, session, tool_name, tool_input):
 
             try:
                 msg_id = lark_im.send_message(token, chat_id, card)
-                lark_im.set_working_message(session_id, msg_id)
+                handoff_db.set_working_message(session_id, msg_id)
             except Exception as e:
                 warn(f"failed to send working card: {e}")
         finally:
@@ -500,7 +502,7 @@ def main():
         return
 
     # Check for active handoff
-    session = lark_im.get_session(session_id)
+    session = handoff_db.get_session(session_id)
     if not session:
         return
 

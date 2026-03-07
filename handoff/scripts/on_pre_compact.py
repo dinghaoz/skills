@@ -12,6 +12,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
 import lark_im
 
 
@@ -30,7 +32,7 @@ def main():
     if not session_id:
         return
 
-    session = lark_im.get_session(session_id)
+    session = handoff_db.get_session(session_id)
     if not session:
         return
 
@@ -41,7 +43,7 @@ def main():
     trigger = hook_input.get("trigger", "auto")
 
     chat_id = session["chat_id"]
-    credentials = lark_im.load_credentials()
+    credentials = handoff_config.load_credentials()
     if not credentials:
         return
 
@@ -66,7 +68,7 @@ def main():
     try:
         msg_id = lark_im.send_message(token, chat_id, card)
         try:
-            lark_im.record_sent_message(
+            handoff_db.record_sent_message(
                 msg_id, text=body, title="Context compacting...", chat_id=chat_id
             )
         except Exception:

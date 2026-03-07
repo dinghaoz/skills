@@ -18,7 +18,7 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-import lark_im
+import handoff_db
 
 
 def warn(msg):
@@ -127,7 +127,7 @@ def main():
         warn(f"failed to clear hooks-pending marker: {e}")
 
     # Check if this session has an active handoff
-    session = lark_im.get_session(session_id) if session_id else None
+    session = handoff_db.get_session(session_id) if session_id else None
     if not session:
         return
 

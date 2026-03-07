@@ -16,6 +16,9 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
+import handoff_worker
 import lark_im
 from send_to_group import (
     create_handoff_group,
@@ -36,7 +39,7 @@ def _get_session_id(args=None):
 
 
 def _require_credentials():
-    creds = lark_im.load_credentials()
+    creds = handoff_config.load_credentials()
     if not creds:
         raise RuntimeError("no_credentials")
     return creds
@@ -50,7 +53,7 @@ def _require_active_chat_id():
     sid = _get_session_id()
     if not sid:
         raise RuntimeError("missing_session_id")
-    session = lark_im.get_session(sid)
+    session = handoff_db.get_session(sid)
     if not session:
         raise RuntimeError("no_active_handoff")
     chat_id = session.get("chat_id", "")
@@ -173,7 +176,7 @@ def _render_status_pretty(status_obj):
 
 def cmd_session_check(args):
     sid = _get_session_id()
-    session = lark_im.get_session(sid) if sid else None
+    session = handoff_db.get_session(sid) if sid else None
     if session:
         _jprint({"already_active": True, "chat_id": session.get("chat_id", "")})
         return 0
@@ -186,10 +189,10 @@ def cmd_discover(args):
     token = _require_token(creds)
     email = creds.get("email", "")
     open_id = lark_im.lookup_open_id_by_email(token, email) if email else ""
-    workspace_id = lark_im.get_workspace_id()
+    workspace_id = handoff_config.get_workspace_id()
     groups = find_groups_for_workspace(token, workspace_id, open_id or None)
-    lark_im.prune_stale_sessions()
-    sessions = lark_im.get_active_sessions()
+    handoff_db.prune_stale_sessions()
+    sessions = handoff_db.get_active_sessions()
     session_by_chat = {s["chat_id"]: s for s in sessions}
     result = []
     for g in groups:
@@ -228,8 +231,8 @@ def cmd_discover_bot(args):
     groups = find_external_groups(token, open_id or None)
     # Get bot info for @-mention matching
     bot_info = lark_im.get_bot_info(token)
-    lark_im.prune_stale_sessions()
-    sessions = lark_im.get_active_sessions()
+    handoff_db.prune_stale_sessions()
+    sessions = handoff_db.get_active_sessions()
     session_by_chat = {s["chat_id"]: s for s in sessions}
     result = []
     for g in groups:
@@ -273,8 +276,8 @@ def cmd_create_group(args):
     if not open_id:
         raise RuntimeError("open_id_not_found")
 
-    workspace_id = lark_im.get_workspace_id()
-    machine = lark_im._get_machine_name()
+    workspace_id = handoff_config.get_workspace_id()
+    machine = handoff_config._get_machine_name()
     worktree = get_worktree_name()
     existing_names = json.loads(args.existing_names_json or "[]")
     chat_id = create_handoff_group(
@@ -302,7 +305,7 @@ def _update_memory_md():
     2. The essential handoff loop commands to resume
     """
     try:
-        project_dir = lark_im._require_project_dir()
+        project_dir = handoff_config._require_project_dir()
     except RuntimeError:
         return  # Cannot locate memory file without project dir
     # Compute the memory path the same way Claude Code does:
@@ -380,7 +383,7 @@ def cmd_activate(args):
     operator_open_id = ""
     bot_open_id = ""
     try:
-        creds = lark_im.load_credentials()
+        creds = handoff_config.load_credentials()
         email = creds.get("email", "") if creds else ""
         if email:
             token = lark_im.get_tenant_token(creds["app_id"], creds["app_secret"])
@@ -390,7 +393,7 @@ def cmd_activate(args):
     except Exception as exc:
         _warn(f"failed to resolve operator/bot open_id: {exc}")
     sidecar_mode = getattr(args, "sidecar_mode", False)
-    lark_im.activate_handoff(
+    handoff_db.activate_handoff(
         sid, args.chat_id, session_model=model,
         operator_open_id=operator_open_id,
         bot_open_id=bot_open_id,
@@ -414,7 +417,7 @@ def _drain_takeover_signal(worker_url, chat_id, timeout_s):
         chat_id,
         since="",
         timeout=max(1, int(timeout_s)),
-        api_key=lark_im.load_api_key() or "",
+        api_key=handoff_config.load_api_key() or "",
     )
     return bool(result.get("takeover", False))
 
@@ -431,7 +434,7 @@ def cmd_takeover(args):
     operator_open_id = ""
     bot_open_id = ""
     try:
-        creds = lark_im.load_credentials()
+        creds = handoff_config.load_credentials()
         email = creds.get("email", "") if creds else ""
         if email:
             token = lark_im.get_tenant_token(creds["app_id"], creds["app_secret"])
@@ -440,8 +443,8 @@ def cmd_takeover(args):
             bot_open_id = bot_info.get("open_id", "")
     except Exception as exc:
         _warn(f"failed to resolve operator/bot open_id: {exc}")
-    expected_owner = lark_im.get_chat_owner_session(args.chat_id)
-    ok, owner, replaced_owner = lark_im.takeover_chat(
+    expected_owner = handoff_db.get_chat_owner_session(args.chat_id)
+    ok, owner, replaced_owner = handoff_db.takeover_chat(
         sid,
         args.chat_id,
         model,
@@ -462,9 +465,9 @@ def cmd_takeover(args):
         )
         return 1
 
-    worker_url = lark_im.load_worker_url()
+    worker_url = handoff_config.load_worker_url()
     if worker_url and replaced_owner and replaced_owner != sid:
-        lark_im.send_takeover(worker_url, args.chat_id)
+        handoff_worker.send_takeover(worker_url, args.chat_id)
     drained = False
     if worker_url and replaced_owner and replaced_owner != sid:
         drained = _drain_takeover_signal(worker_url, args.chat_id, args.drain_timeout)
@@ -488,8 +491,8 @@ def cmd_deactivate(args):
     if not sid:
         _jprint({"ok": True, "deactivated": False})
         return 0
-    lark_im.clear_working_message(sid)
-    chat_id = lark_im.deactivate_handoff(sid)
+    handoff_db.clear_working_message(sid)
+    chat_id = handoff_db.deactivate_handoff(sid)
     _jprint({"ok": True, "deactivated": True, "chat_id": chat_id or ""})
     return 0
 
@@ -499,21 +502,21 @@ def cmd_set_filter(args):
     if not sid:
         _jprint({"ok": False, "error": "no active session"})
         return 1
-    session = lark_im.get_session(sid)
+    session = handoff_db.get_session(sid)
     if not session:
         _jprint({"ok": False, "error": "session not found"})
         return 1
     level = args.level
-    if level not in lark_im.MESSAGE_FILTER_LEVELS:
+    if level not in handoff_db.MESSAGE_FILTER_LEVELS:
         _jprint({"ok": False, "error": f"invalid level: {level}"})
         return 1
-    lark_im.set_message_filter(session["chat_id"], level)
+    handoff_db.set_message_filter(session["chat_id"], level)
     _jprint({"ok": True, "level": level})
     return 0
 
 
 def cmd_parent_local(args):
-    local = lark_im.lookup_parent_message(args.parent_id)
+    local = handoff_db.lookup_parent_message(args.parent_id)
     if not local:
         _jprint({"found": False})
         return 0
@@ -625,9 +628,9 @@ def cmd_list_groups(args):
 
 
 def cmd_status(args):
-    workspace_id = lark_im.get_workspace_id()
-    db_path = lark_im._db_path()
-    creds = lark_im.load_credentials()
+    workspace_id = handoff_config.get_workspace_id()
+    db_path = handoff_db._db_path()
+    creds = handoff_config.load_credentials()
     out = {
         "workspace": workspace_id,
         "database": db_path,
@@ -648,9 +651,9 @@ def cmd_status(args):
         except Exception:
             open_id = None
     groups = find_groups_for_workspace(token, workspace_id, open_id) if open_id else []
-    session_by_chat = {s["chat_id"]: s for s in lark_im.get_active_sessions()}
+    session_by_chat = {s["chat_id"]: s for s in handoff_db.get_active_sessions()}
     my_sid = _get_session_id()
-    my_session = lark_im.get_session(my_sid) if my_sid else None
+    my_session = handoff_db.get_session(my_sid) if my_sid else None
     my_chat_id = my_session["chat_id"] if my_session else None
     for g in groups:
         cid = g.get("chat_id", "")
@@ -681,7 +684,7 @@ def cmd_status(args):
 
 
 def cmd_config_current(args):
-    cfg = lark_im.CONFIG_FILE
+    cfg = handoff_config.CONFIG_FILE
     _jprint({"config_file": cfg, "config_exists": os.path.exists(cfg)})
     return 0
 
@@ -689,7 +692,7 @@ def cmd_config_current(args):
 
 def _session_tool_model(args):
     chat_id = _require_active_chat_id()
-    tool = lark_im._normalize_session_tool()  # from HANDOFF_SESSION_TOOL env
+    tool = handoff_db._normalize_session_tool()  # from HANDOFF_SESSION_TOOL env
     model = str(args.session_model).strip()
     if "/" in model:
         model = model.split("/", 1)[1]
@@ -859,7 +862,7 @@ def cmd_send_status_card(args):
     card = lark_im.build_card(title, body=body, color=color)
     msg_id = lark_im.send_message(token, chat_id, card)
     try:
-        lark_im.record_sent_message(msg_id, text=body, title=title, chat_id=chat_id)
+        handoff_db.record_sent_message(msg_id, text=body, title=title, chat_id=chat_id)
     except Exception:
         pass
 
@@ -894,9 +897,9 @@ def cmd_dissolve_chat(args):
 def cmd_cleanup_sessions(args):
     deleted = []
     targets = set(args.chat_id)
-    for s in lark_im.get_active_sessions():
+    for s in handoff_db.get_active_sessions():
         if s.get("chat_id") in targets:
-            lark_im.unregister_session(s["session_id"])
+            handoff_db.unregister_session(s["session_id"])
             deleted.append(s["session_id"])
     _jprint({"ok": True, "removed_sessions": deleted})
     return 0
@@ -922,7 +925,7 @@ def cmd_find_empty_groups(args):
 
 
 def cmd_clear_project(args):
-    workspace_id = lark_im.get_workspace_id()
+    workspace_id = handoff_config.get_workspace_id()
     tag = f"workspace:{workspace_id}"
     dissolved = []
     dissolve_errors = []
@@ -943,16 +946,16 @@ def cmd_clear_project(args):
     except Exception as e:
         dissolve_errors.append({"chat_id": "", "error": f"group_discovery_failed: {e}"})
 
-    sessions = lark_im.get_active_sessions()
+    sessions = handoff_db.get_active_sessions()
     removed_sessions = []
     for s in sessions:
         sid = s.get("session_id", "")
         if not sid:
             continue
-        lark_im.unregister_session(sid)
+        handoff_db.unregister_session(sid)
         removed_sessions.append(sid)
 
-    project_dir = lark_im._require_project_dir()
+    project_dir = handoff_config._require_project_dir()
     project_name = project_dir.replace("/", "-")
     project_db_dir = os.path.join(
         os.path.expanduser("~/.handoff/projects"), project_name
@@ -978,7 +981,7 @@ def cmd_clear_project(args):
 
 
 def cmd_deinit_config(args):
-    cfg = lark_im.CONFIG_FILE
+    cfg = handoff_config.CONFIG_FILE
     removed = []
     missing = []
 
@@ -1019,7 +1022,7 @@ def cmd_send_form_select(args):
         chat_id=chat_id,
     )
     msg_id = lark_im.send_message(token, chat_id, card)
-    lark_im.record_sent_message(msg_id, text=body, title=args.title, chat_id=chat_id)
+    handoff_db.record_sent_message(msg_id, text=body, title=args.title, chat_id=chat_id)
     _jprint({"ok": True, "chat_id": chat_id, "message_id": msg_id})
     return 0
 
@@ -1039,7 +1042,7 @@ def cmd_send_form_input(args):
         chat_id=chat_id,
     )
     msg_id = lark_im.send_message(token, chat_id, card)
-    lark_im.record_sent_message(msg_id, text=body, title=args.title, chat_id=chat_id)
+    handoff_db.record_sent_message(msg_id, text=body, title=args.title, chat_id=chat_id)
     _jprint({"ok": True, "chat_id": chat_id, "message_id": msg_id})
     return 0
 
@@ -1078,7 +1081,7 @@ def cmd_send_form(args):
         chat_id=chat_id,
     )
     msg_id = lark_im.send_message(token, chat_id, card)
-    lark_im.record_sent_message(msg_id, text=body, title=args.title, chat_id=chat_id)
+    handoff_db.record_sent_message(msg_id, text=body, title=args.title, chat_id=chat_id)
     _jprint({"ok": True, "chat_id": chat_id, "message_id": msg_id})
     return 0
 
@@ -1163,7 +1166,7 @@ def cmd_diag(args):
     from permission_core import build_permission_body, permission_buttons
 
     chat_id = args.chat_id
-    if chat_id and not lark_im.is_valid_chat_id(chat_id):
+    if chat_id and not handoff_config.is_valid_chat_id(chat_id):
         _jprint({"ok": False, "error": f"invalid chat_id format: {chat_id!r}"})
         return 1
     mode = args.mode  # "ws", "http", or "both"
@@ -1185,7 +1188,7 @@ def cmd_diag(args):
         return 1
 
     # 2. Worker connectivity
-    worker_url = lark_im.load_worker_url()
+    worker_url = handoff_config.load_worker_url()
     if not worker_url:
         _jprint(
             {
@@ -1200,12 +1203,12 @@ def cmd_diag(args):
     # 3. Resolve chat_id if not provided
     if not chat_id:
         session_id = _get_session_id()
-        session = lark_im.get_session(session_id) if session_id else None
+        session = handoff_db.get_session(session_id) if session_id else None
         if session:
             chat_id = session.get("chat_id", "")
         if not chat_id:
             # Try to discover groups and pick the first one
-            workspace_id = lark_im.get_workspace_id()
+            workspace_id = handoff_config.get_workspace_id()
             groups = find_groups_for_workspace(token, workspace_id)
             if groups:
                 chat_id = groups[0]["chat_id"]
@@ -1227,7 +1230,7 @@ def cmd_diag(args):
     steps.append({"step": "chat_id", "ok": True, "value": chat_id})
 
     # 4. Ack all stale replies
-    lark_im.ack_worker_replies(worker_url, chat_id, "9999999999999")
+    handoff_worker.ack_worker_replies(worker_url, chat_id, "9999999999999")
     steps.append({"step": "ack_stale", "ok": True})
 
     # 5. Send test card with buttons
@@ -1267,7 +1270,7 @@ def cmd_diag(args):
 
         def _ws_poll():
             try:
-                ws_result_box["result"] = lark_im.poll_worker_ws(
+                ws_result_box["result"] = handoff_worker.poll_worker_ws(
                     worker_url, chat_id, since="0"
                 )
             except Exception as exc:
@@ -1320,7 +1323,7 @@ def cmd_diag(args):
         http_start = time.time()
         http_deadline = http_start + timeout
         while time.time() < http_deadline:
-            result = lark_im.poll_worker(worker_url, chat_id, since="0")
+            result = handoff_worker.poll_worker(worker_url, chat_id, since="0")
             if result.get("error"):
                 continue
             replies = result.get("replies", [])
@@ -1351,7 +1354,7 @@ def cmd_diag(args):
     steps.append(poll_result)
 
     # Clean up
-    lark_im.ack_worker_replies(worker_url, chat_id, "9999999999999")
+    handoff_worker.ack_worker_replies(worker_url, chat_id, "9999999999999")
 
     ok = all(s.get("ok") for s in steps)
     _jprint({"ok": ok, "steps": steps})
@@ -1379,7 +1382,7 @@ def cmd_guest_add(args):
     role = getattr(args, "role", "guest") or "guest"
     for g in new_guests:
         g["role"] = role
-    added, current = lark_im.add_guests(session_id, new_guests)
+    added, current = handoff_db.add_guests(session_id, new_guests)
     _jprint({
         "ok": True,
         "added": added,
@@ -1404,7 +1407,7 @@ def cmd_guest_remove(args):
     if not open_ids:
         _jprint({"ok": False, "error": "no open_ids provided"})
         return 1
-    removed, current = lark_im.remove_guests(session_id, open_ids)
+    removed, current = handoff_db.remove_guests(session_id, open_ids)
     _jprint({
         "ok": True,
         "removed": removed,
@@ -1418,7 +1421,7 @@ def cmd_guest_list(args):
     if not session_id:
         _jprint({"ok": False, "error": "HANDOFF_SESSION_ID not set"})
         return 1
-    guests = lark_im.get_guests(session_id)
+    guests = handoff_db.get_guests(session_id)
     _jprint({
         "ok": True,
         "guests": guests,
@@ -1428,7 +1431,7 @@ def cmd_guest_list(args):
 
 def _chat_id_type(value):
     """Argparse type that validates chat_id format."""
-    if not lark_im.is_valid_chat_id(value):
+    if not handoff_config.is_valid_chat_id(value):
         raise argparse.ArgumentTypeError(
             f"invalid chat_id format: {value!r} — "
             "must be 1-128 chars, alphanumeric/dash/underscore/dot/colon/@"
@@ -1582,7 +1585,7 @@ def build_parser():
     s.set_defaults(func=cmd_send_status_card)
 
     s = sub.add_parser("log-check")
-    s.add_argument("--log-dir", default=lark_im.handoff_tmp_dir())
+    s.add_argument("--log-dir", default=handoff_config.handoff_tmp_dir())
     s.add_argument("--lines", type=int, default=2000)
     s.add_argument("--since-minutes", type=int, default=0)
     s.set_defaults(func=cmd_log_check)

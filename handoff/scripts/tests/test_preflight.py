@@ -14,6 +14,7 @@ import unittest
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
 import lark_im
 import preflight  # type: ignore
 
@@ -34,13 +35,13 @@ class PreflightTestBase(unittest.TestCase):
         os.environ["HANDOFF_PROJECT_DIR"] = self.project_dir
         os.environ["HANDOFF_SESSION_TOOL"] = "Claude Code"
 
-        # Reset lark_im config resolution cache by setting CONFIG_FILE
-        self._orig_config_file = lark_im.CONFIG_FILE
-        self._orig_handoff_home = lark_im.HANDOFF_HOME
+        # Reset handoff_config config resolution cache by setting CONFIG_FILE
+        self._orig_config_file = handoff_config.CONFIG_FILE
+        self._orig_handoff_home = handoff_config.HANDOFF_HOME
 
     def tearDown(self):
-        lark_im.CONFIG_FILE = self._orig_config_file
-        lark_im.HANDOFF_HOME = self._orig_handoff_home
+        handoff_config.CONFIG_FILE = self._orig_config_file
+        handoff_config.HANDOFF_HOME = self._orig_handoff_home
 
         for key, val in [
             ("HOME", self._old_home),
@@ -54,14 +55,14 @@ class PreflightTestBase(unittest.TestCase):
         self.tmp.cleanup()
 
     def _write_config(self, data):
-        """Write config JSON file and point lark_im.CONFIG_FILE at it."""
+        """Write config JSON file and point handoff_config.CONFIG_FILE at it."""
         config_dir = os.path.join(self.tmp.name, ".handoff")
         os.makedirs(config_dir, exist_ok=True)
         config_path = os.path.join(config_dir, "config.json")
         with open(config_path, "w") as f:
             json.dump(data, f)
-        lark_im.CONFIG_FILE = config_path
-        lark_im.HANDOFF_HOME = config_dir
+        handoff_config.CONFIG_FILE = config_path
+        handoff_config.HANDOFF_HOME = config_dir
         return config_path
 
 
@@ -71,7 +72,7 @@ class PreflightTestBase(unittest.TestCase):
 
 class CheckCredentialsTest(PreflightTestBase):
     def test_missing_config_file(self):
-        lark_im.CONFIG_FILE = os.path.join(self.tmp.name, "nonexistent.json")
+        handoff_config.CONFIG_FILE = os.path.join(self.tmp.name, "nonexistent.json")
         ok, detail = preflight.check_credentials()
         self.assertFalse(ok)
         self.assertIn("not found", detail)
@@ -80,7 +81,7 @@ class CheckCredentialsTest(PreflightTestBase):
         config_path = os.path.join(self.tmp.name, "bad.json")
         with open(config_path, "w") as f:
             f.write("not json {{{")
-        lark_im.CONFIG_FILE = config_path
+        handoff_config.CONFIG_FILE = config_path
 
         ok, detail = preflight.check_credentials()
         self.assertFalse(ok)
@@ -160,20 +161,20 @@ class CheckCredentialsNestedTest(PreflightTestBase):
 class CheckWorkerUrlTest(PreflightTestBase):
     def setUp(self):
         super().setUp()
-        self._orig = lark_im.load_worker_url
+        self._orig = handoff_config.load_worker_url
 
     def tearDown(self):
-        lark_im.load_worker_url = self._orig
+        handoff_config.load_worker_url = self._orig
         super().tearDown()
 
     def test_missing_url(self):
-        lark_im.load_worker_url = lambda: None
+        handoff_config.load_worker_url = lambda: None
         ok, detail = preflight.check_worker_url()
         self.assertFalse(ok)
         self.assertIn("worker_url", detail)
 
     def test_present_url(self):
-        lark_im.load_worker_url = lambda: "https://worker.example.com"
+        handoff_config.load_worker_url = lambda: "https://worker.example.com"
         ok, url = preflight.check_worker_url()
         self.assertTrue(ok)
         self.assertEqual(url, "https://worker.example.com")
@@ -186,20 +187,20 @@ class CheckWorkerUrlTest(PreflightTestBase):
 class CheckApiKeyTest(PreflightTestBase):
     def setUp(self):
         super().setUp()
-        self._orig = lark_im.load_api_key
+        self._orig = handoff_config.load_api_key
 
     def tearDown(self):
-        lark_im.load_api_key = self._orig
+        handoff_config.load_api_key = self._orig
         super().tearDown()
 
     def test_missing_key(self):
-        lark_im.load_api_key = lambda: None
+        handoff_config.load_api_key = lambda: None
         ok, detail = preflight.check_api_key()
         self.assertFalse(ok)
         self.assertIn("worker_api_key", detail)
 
     def test_present_key(self):
-        lark_im.load_api_key = lambda: "secret123"
+        handoff_config.load_api_key = lambda: "secret123"
         ok, detail = preflight.check_api_key()
         self.assertTrue(ok)
         self.assertIsNone(detail)
@@ -212,22 +213,22 @@ class CheckApiKeyTest(PreflightTestBase):
 class CheckTokenTest(PreflightTestBase):
     def setUp(self):
         super().setUp()
-        self._orig_creds = lark_im.load_credentials
+        self._orig_creds = handoff_config.load_credentials
         self._orig_token = lark_im.get_tenant_token
 
     def tearDown(self):
-        lark_im.load_credentials = self._orig_creds
+        handoff_config.load_credentials = self._orig_creds
         lark_im.get_tenant_token = self._orig_token
         super().tearDown()
 
     def test_no_credentials(self):
-        lark_im.load_credentials = lambda: None
+        handoff_config.load_credentials = lambda: None
         ok, detail = preflight.check_token()
         self.assertFalse(ok)
         self.assertIn("Skipped", detail)
 
     def test_token_error(self):
-        lark_im.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
+        handoff_config.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
         lark_im.get_tenant_token = lambda a, b: (_ for _ in ()).throw(
             RuntimeError("auth fail")
         )
@@ -236,7 +237,7 @@ class CheckTokenTest(PreflightTestBase):
         self.assertIn("auth fail", detail)
 
     def test_token_success(self):
-        lark_im.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
+        handoff_config.load_credentials = lambda: {"app_id": "a", "app_secret": "b"}
         lark_im.get_tenant_token = lambda a, b: "tok"
         ok, detail = preflight.check_token()
         self.assertTrue(ok)
@@ -290,13 +291,13 @@ class CheckHooksTest(PreflightTestBase):
         os.environ.pop("HANDOFF_PROJECT_DIR", None)
         ok, detail = preflight.check_hooks()
         self.assertFalse(ok)
-        self.assertIn("HANDOFF_PROJECT_DIR", detail)
+        self.assertIn("not initialized", detail)
 
     def test_missing_settings_files(self):
         # No .claude/settings.json exists
         ok, detail = preflight.check_hooks()
         self.assertFalse(ok)
-        self.assertIn("Missing hooks", detail)
+        self.assertIn("not initialized", detail)
 
     def test_all_hooks_in_settings(self):
         """When all required hooks are in settings.json, check passes."""
@@ -344,7 +345,7 @@ class CheckHooksTest(PreflightTestBase):
         ok, detail = preflight.check_hooks()
         if len(required) > 1:
             self.assertFalse(ok)
-            self.assertIn("Missing hooks", detail)
+            self.assertIn("not initialized", detail)
 
 
 # ---------------------------------------------------------------------------
@@ -355,17 +356,17 @@ class MainFlowTest(PreflightTestBase):
     def setUp(self):
         super().setUp()
         self._orig_argv = sys.argv
-        self._orig_creds = lark_im.load_credentials
+        self._orig_creds = handoff_config.load_credentials
         self._orig_token = lark_im.get_tenant_token
-        self._orig_worker = lark_im.load_worker_url
-        self._orig_api_key = lark_im.load_api_key
+        self._orig_worker = handoff_config.load_worker_url
+        self._orig_api_key = handoff_config.load_api_key
 
     def tearDown(self):
         sys.argv = self._orig_argv
-        lark_im.load_credentials = self._orig_creds
+        handoff_config.load_credentials = self._orig_creds
         lark_im.get_tenant_token = self._orig_token
-        lark_im.load_worker_url = self._orig_worker
-        lark_im.load_api_key = self._orig_api_key
+        handoff_config.load_worker_url = self._orig_worker
+        handoff_config.load_api_key = self._orig_api_key
         super().tearDown()
 
     def _run_main(self, argv):
@@ -381,10 +382,10 @@ class MainFlowTest(PreflightTestBase):
             sys.stdout = old_stdout
 
     def test_all_checks_fail_exits_1(self):
-        lark_im.CONFIG_FILE = os.path.join(self.tmp.name, "nope.json")
-        lark_im.load_worker_url = lambda: None
-        lark_im.load_api_key = lambda: None
-        lark_im.load_credentials = lambda: None
+        handoff_config.CONFIG_FILE = os.path.join(self.tmp.name, "nope.json")
+        handoff_config.load_worker_url = lambda: None
+        handoff_config.load_api_key = lambda: None
+        handoff_config.load_credentials = lambda: None
 
         output, exit_code = self._run_main(["--skip-hooks"])
         self.assertEqual(exit_code, 1)
@@ -399,9 +400,9 @@ class MainFlowTest(PreflightTestBase):
             "worker_url": "https://w.example",
             "worker_api_key": "k",
         })
-        lark_im.load_worker_url = lambda: "https://w.example"
-        lark_im.load_api_key = lambda: "k"
-        lark_im.load_credentials = lambda: {
+        handoff_config.load_worker_url = lambda: "https://w.example"
+        handoff_config.load_api_key = lambda: "k"
+        handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "s"
         }
         lark_im.get_tenant_token = lambda a, b: "tok"
@@ -429,7 +430,7 @@ class MainFlowTest(PreflightTestBase):
             "app_secret": "secret123",
             "email": "e@e.com",
         })
-        lark_im.load_credentials = lambda: {
+        handoff_config.load_credentials = lambda: {
             "app_id": "a", "app_secret": "secret123"
         }
         lark_im.get_tenant_token = lambda a, b: "tok"
@@ -454,7 +455,7 @@ class MainFlowTest(PreflightTestBase):
                 }
             },
         })
-        lark_im.load_credentials = lambda: {
+        handoff_config.load_credentials = lambda: {
             "app_id": "nested_a", "app_secret": "nested_secret"
         }
         lark_im.get_tenant_token = lambda a, b: "tok"
@@ -475,11 +476,11 @@ class CheckWorkerReachableTest(PreflightTestBase):
     def setUp(self):
         super().setUp()
         self._orig_run = __import__("subprocess").run
-        self._orig_auth = lark_im._worker_auth_headers
+        self._orig_auth = handoff_config._worker_auth_headers
 
     def tearDown(self):
         __import__("subprocess").run = self._orig_run
-        lark_im._worker_auth_headers = self._orig_auth
+        handoff_config._worker_auth_headers = self._orig_auth
         super().tearDown()
 
     def test_curl_failure(self):
@@ -491,7 +492,7 @@ class CheckWorkerReachableTest(PreflightTestBase):
             stderr = "connection refused"
 
         sp.run = lambda *a, **kw: FakeResult()
-        lark_im._worker_auth_headers = lambda: []
+        handoff_config._worker_auth_headers = lambda: []
 
         ok, detail = preflight.check_worker_reachable("https://w.example")
         self.assertFalse(ok)
@@ -506,7 +507,7 @@ class CheckWorkerReachableTest(PreflightTestBase):
             stderr = ""
 
         sp.run = lambda *a, **kw: FakeResult()
-        lark_im._worker_auth_headers = lambda: []
+        handoff_config._worker_auth_headers = lambda: []
 
         ok, detail = preflight.check_worker_reachable("https://w.example")
         self.assertFalse(ok)
@@ -521,7 +522,7 @@ class CheckWorkerReachableTest(PreflightTestBase):
             stderr = ""
 
         sp.run = lambda *a, **kw: FakeResult()
-        lark_im._worker_auth_headers = lambda: []
+        handoff_config._worker_auth_headers = lambda: []
 
         ok, detail = preflight.check_worker_reachable("https://w.example")
         self.assertTrue(ok)
@@ -535,7 +536,7 @@ class CheckWorkerReachableTest(PreflightTestBase):
             stderr = ""
 
         sp.run = lambda *a, **kw: FakeResult()
-        lark_im._worker_auth_headers = lambda: []
+        handoff_config._worker_auth_headers = lambda: []
 
         ok, detail = preflight.check_worker_reachable("https://w.example")
         self.assertFalse(ok)
@@ -548,7 +549,7 @@ class CheckWorkerReachableTest(PreflightTestBase):
             raise sp.TimeoutExpired("curl", 15)
 
         sp.run = raise_timeout
-        lark_im._worker_auth_headers = lambda: []
+        handoff_config._worker_auth_headers = lambda: []
 
         ok, detail = preflight.check_worker_reachable("https://w.example")
         self.assertFalse(ok)

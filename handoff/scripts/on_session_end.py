@@ -14,6 +14,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
 import lark_im
 
 
@@ -39,7 +41,7 @@ def main():
 
     # Check if this session has an active handoff
     session_id = hook_input.get("session_id", "")
-    session = lark_im.get_session(session_id) if session_id else None
+    session = handoff_db.get_session(session_id) if session_id else None
     if not session:
         return
 
@@ -48,7 +50,7 @@ def main():
     sidecar_mode = session.get("sidecar_mode", False)
 
     # Deactivate handoff
-    lark_im.deactivate_handoff(session_id)
+    handoff_db.deactivate_handoff(session_id)
 
     if not chat_id:
         return
@@ -58,7 +60,7 @@ def main():
         return
 
     # Send notification to Lark
-    credentials = lark_im.load_credentials()
+    credentials = handoff_config.load_credentials()
     if not credentials:
         return
 
@@ -83,7 +85,7 @@ def main():
         )
         msg_id = lark_im.send_message(token, chat_id, card)
         try:
-            lark_im.record_sent_message(
+            handoff_db.record_sent_message(
                 msg_id, text=msg_text, title="Session Ended", chat_id=chat_id
             )
         except Exception as e:

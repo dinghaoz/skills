@@ -13,7 +13,7 @@ Requires the Handoff Silent dynamic profile to be installed at:
 import os
 import sys
 
-import lark_im
+import handoff_config
 
 SILENT_PROFILE = "Handoff Silent"
 
@@ -58,7 +58,7 @@ def _state_file():
     session_id = os.environ.get("HANDOFF_SESSION_ID", "")
     suffix = f"-{session_id}" if session_id else ""
     return os.path.join(
-        lark_im.HANDOFF_HOME,
+        handoff_config.HANDOFF_HOME,
         f"iterm2-original-profile{suffix}",
     )
 

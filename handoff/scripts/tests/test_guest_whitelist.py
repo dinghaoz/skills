@@ -18,7 +18,7 @@ import unittest
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
 
-import lark_im
+import handoff_db
 import wait_for_reply
 
 
@@ -42,9 +42,9 @@ class _DbTestCase(unittest.TestCase):
         os.environ["HANDOFF_PROJECT_DIR"] = self.project_dir
         os.environ["HANDOFF_SESSION_TOOL"] = "Claude Code"
 
-        self.db_path = lark_im._db_path()
-        lark_im._db_initialized.discard(self.db_path)
-        conn = lark_im._get_db()
+        self.db_path = handoff_db._db_path()
+        handoff_db._db_initialized.discard(self.db_path)
+        conn = handoff_db._get_db()
         conn.close()
 
     def tearDown(self):
@@ -176,17 +176,17 @@ class GuestCrudTest(_DbTestCase):
     """Tests for guest whitelist CRUD functions in lark_im."""
 
     def _create_session(self, session_id="s1", chat_id="chat-1"):
-        lark_im.register_session(session_id, chat_id, "opus")
+        handoff_db.register_session(session_id, chat_id, "opus")
 
     def test_get_guests_empty_by_default(self):
         """New session has an empty guest list."""
         self._create_session()
-        guests = lark_im.get_guests("s1")
+        guests = handoff_db.get_guests("s1")
         self.assertEqual(guests, [])
 
     def test_get_guests_nonexistent_session(self):
         """Nonexistent session returns empty list."""
-        guests = lark_im.get_guests("nonexistent")
+        guests = handoff_db.get_guests("nonexistent")
         self.assertEqual(guests, [])
 
     def test_set_guests_and_get(self):
@@ -196,8 +196,8 @@ class GuestCrudTest(_DbTestCase):
             {"open_id": "ou_alice", "name": "Alice"},
             {"open_id": "ou_bob", "name": "Bob"},
         ]
-        lark_im.set_guests("s1", guest_list)
-        result = lark_im.get_guests("s1")
+        handoff_db.set_guests("s1", guest_list)
+        result = handoff_db.get_guests("s1")
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["open_id"], "ou_alice")
         self.assertEqual(result[1]["open_id"], "ou_bob")
@@ -205,16 +205,16 @@ class GuestCrudTest(_DbTestCase):
     def test_set_guests_overwrites(self):
         """set_guests replaces the entire list."""
         self._create_session()
-        lark_im.set_guests("s1", [{"open_id": "ou_a", "name": "A"}])
-        lark_im.set_guests("s1", [{"open_id": "ou_b", "name": "B"}])
-        result = lark_im.get_guests("s1")
+        handoff_db.set_guests("s1", [{"open_id": "ou_a", "name": "A"}])
+        handoff_db.set_guests("s1", [{"open_id": "ou_b", "name": "B"}])
+        result = handoff_db.get_guests("s1")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["open_id"], "ou_b")
 
     def test_add_guests_new(self):
         """add_guests adds new guests to an empty list."""
         self._create_session()
-        added, current = lark_im.add_guests("s1", [
+        added, current = handoff_db.add_guests("s1", [
             {"open_id": "ou_alice", "name": "Alice"},
         ])
         self.assertEqual(len(added), 1)
@@ -224,8 +224,8 @@ class GuestCrudTest(_DbTestCase):
     def test_add_guests_skip_duplicates(self):
         """add_guests skips guests already in the list."""
         self._create_session()
-        lark_im.set_guests("s1", [{"open_id": "ou_alice", "name": "Alice"}])
-        added, current = lark_im.add_guests("s1", [
+        handoff_db.set_guests("s1", [{"open_id": "ou_alice", "name": "Alice"}])
+        added, current = handoff_db.add_guests("s1", [
             {"open_id": "ou_alice", "name": "Alice"},
             {"open_id": "ou_bob", "name": "Bob"},
         ])
@@ -236,8 +236,8 @@ class GuestCrudTest(_DbTestCase):
     def test_add_guests_all_duplicates(self):
         """add_guests with all duplicates returns empty added list."""
         self._create_session()
-        lark_im.set_guests("s1", [{"open_id": "ou_alice", "name": "Alice"}])
-        added, current = lark_im.add_guests("s1", [
+        handoff_db.set_guests("s1", [{"open_id": "ou_alice", "name": "Alice"}])
+        added, current = handoff_db.add_guests("s1", [
             {"open_id": "ou_alice", "name": "Alice"},
         ])
         self.assertEqual(len(added), 0)
@@ -246,11 +246,11 @@ class GuestCrudTest(_DbTestCase):
     def test_remove_guests_existing(self):
         """remove_guests removes matching guests by open_id."""
         self._create_session()
-        lark_im.set_guests("s1", [
+        handoff_db.set_guests("s1", [
             {"open_id": "ou_alice", "name": "Alice"},
             {"open_id": "ou_bob", "name": "Bob"},
         ])
-        removed, remaining = lark_im.remove_guests("s1", {"ou_alice"})
+        removed, remaining = handoff_db.remove_guests("s1", {"ou_alice"})
         self.assertEqual(len(removed), 1)
         self.assertEqual(removed[0]["name"], "Alice")
         self.assertEqual(len(remaining), 1)
@@ -259,28 +259,28 @@ class GuestCrudTest(_DbTestCase):
     def test_remove_guests_not_found(self):
         """remove_guests with non-matching IDs returns empty removed list."""
         self._create_session()
-        lark_im.set_guests("s1", [{"open_id": "ou_alice", "name": "Alice"}])
-        removed, remaining = lark_im.remove_guests("s1", {"ou_unknown"})
+        handoff_db.set_guests("s1", [{"open_id": "ou_alice", "name": "Alice"}])
+        removed, remaining = handoff_db.remove_guests("s1", {"ou_unknown"})
         self.assertEqual(len(removed), 0)
         self.assertEqual(len(remaining), 1)
 
     def test_remove_guests_all(self):
         """remove_guests can remove all guests."""
         self._create_session()
-        lark_im.set_guests("s1", [
+        handoff_db.set_guests("s1", [
             {"open_id": "ou_a", "name": "A"},
             {"open_id": "ou_b", "name": "B"},
         ])
-        removed, remaining = lark_im.remove_guests("s1", {"ou_a", "ou_b"})
+        removed, remaining = handoff_db.remove_guests("s1", {"ou_a", "ou_b"})
         self.assertEqual(len(removed), 2)
         self.assertEqual(len(remaining), 0)
         # Verify DB is updated
-        self.assertEqual(lark_im.get_guests("s1"), [])
+        self.assertEqual(handoff_db.get_guests("s1"), [])
 
     def test_add_guests_multiple(self):
         """add_guests can add multiple guests at once."""
         self._create_session()
-        added, current = lark_im.add_guests("s1", [
+        added, current = handoff_db.add_guests("s1", [
             {"open_id": "ou_a", "name": "A"},
             {"open_id": "ou_b", "name": "B"},
             {"open_id": "ou_c", "name": "C"},
@@ -291,10 +291,10 @@ class GuestCrudTest(_DbTestCase):
     def test_set_guests_unicode_names(self):
         """Guests with unicode names are stored correctly."""
         self._create_session()
-        lark_im.set_guests("s1", [
+        handoff_db.set_guests("s1", [
             {"open_id": "ou_jack", "name": "小明"},
         ])
-        result = lark_im.get_guests("s1")
+        result = handoff_db.get_guests("s1")
         self.assertEqual(result[0]["name"], "小明")
 
 
@@ -307,27 +307,27 @@ class SessionGuestFieldTest(_DbTestCase):
 
     def test_get_session_returns_guests(self):
         """get_session includes parsed guests list."""
-        lark_im.register_session("s1", "chat-1", "opus")
-        lark_im.set_guests("s1", [
+        handoff_db.register_session("s1", "chat-1", "opus")
+        handoff_db.set_guests("s1", [
             {"open_id": "ou_alice", "name": "Alice"},
         ])
-        sess = lark_im.get_session("s1")
+        sess = handoff_db.get_session("s1")
         self.assertIsNotNone(sess)
         self.assertEqual(len(sess["guests"]), 1)
         self.assertEqual(sess["guests"][0]["open_id"], "ou_alice")
 
     def test_get_session_empty_guests_default(self):
         """New session returns empty guests list in get_session."""
-        lark_im.register_session("s1", "chat-1", "opus")
-        sess = lark_im.get_session("s1")
+        handoff_db.register_session("s1", "chat-1", "opus")
+        sess = handoff_db.get_session("s1")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["guests"], [])
 
     def test_get_session_invalid_json_guests(self):
         """Corrupted guests JSON returns empty list."""
-        lark_im.register_session("s1", "chat-1", "opus")
+        handoff_db.register_session("s1", "chat-1", "opus")
         # Manually corrupt the guests column
-        conn = lark_im._get_db()
+        conn = handoff_db._get_db()
         try:
             conn.execute(
                 "UPDATE sessions SET guests = ? WHERE session_id = ?",
@@ -336,28 +336,28 @@ class SessionGuestFieldTest(_DbTestCase):
             conn.commit()
         finally:
             conn.close()
-        sess = lark_im.get_session("s1")
+        sess = handoff_db.get_session("s1")
         self.assertEqual(sess["guests"], [])
 
     def test_guests_persist_across_get_guests_calls(self):
         """Guests set via set_guests are returned by get_guests."""
-        lark_im.register_session("s1", "chat-1", "opus")
-        lark_im.set_guests("s1", [{"open_id": "ou_x", "name": "X"}])
+        handoff_db.register_session("s1", "chat-1", "opus")
+        handoff_db.set_guests("s1", [{"open_id": "ou_x", "name": "X"}])
 
         # get_guests returns the same data
-        g1 = lark_im.get_guests("s1")
-        g2 = lark_im.get_guests("s1")
+        g1 = handoff_db.get_guests("s1")
+        g2 = handoff_db.get_guests("s1")
         self.assertEqual(g1, g2)
 
     def test_guests_independent_per_session(self):
         """Different sessions have independent guest lists."""
-        lark_im.register_session("s1", "chat-1", "opus")
-        lark_im.register_session("s2", "chat-2", "opus")
-        lark_im.set_guests("s1", [{"open_id": "ou_a", "name": "A"}])
-        lark_im.set_guests("s2", [{"open_id": "ou_b", "name": "B"}])
+        handoff_db.register_session("s1", "chat-1", "opus")
+        handoff_db.register_session("s2", "chat-2", "opus")
+        handoff_db.set_guests("s1", [{"open_id": "ou_a", "name": "A"}])
+        handoff_db.set_guests("s2", [{"open_id": "ou_b", "name": "B"}])
 
-        g1 = lark_im.get_guests("s1")
-        g2 = lark_im.get_guests("s2")
+        g1 = handoff_db.get_guests("s1")
+        g2 = handoff_db.get_guests("s2")
         self.assertEqual(g1[0]["name"], "A")
         self.assertEqual(g2[0]["name"], "B")
 
@@ -370,12 +370,12 @@ class GuestFilterChainIntegrationTest(unittest.TestCase):
     """Integration tests for the filter chain with guest whitelist."""
 
     def setUp(self):
-        self._orig_is_bot = lark_im.is_bot_sent_message
+        self._orig_is_bot = handoff_db.is_bot_sent_message
         self._bot_sent_ids = set()
-        lark_im.is_bot_sent_message = lambda mid: mid in self._bot_sent_ids
+        handoff_db.is_bot_sent_message = lambda mid: mid in self._bot_sent_ids
 
     def tearDown(self):
-        lark_im.is_bot_sent_message = self._orig_is_bot
+        handoff_db.is_bot_sent_message = self._orig_is_bot
 
     def test_guest_message_passes_both_filters(self):
         """Guest @-mentioning the bot passes allowed_senders then bot_interactions."""

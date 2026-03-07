@@ -463,70 +463,84 @@ class PermissionCardsTest(unittest.TestCase):
         self.assertEqual(len(calls["send"]), 2)
 
 class ResolvePermissionContextTest(unittest.TestCase):
-    def _make_fake(self, *, session=None, creds=None, token="tok",
-                   token_error=None, worker_url="https://w.example"):
+    """Tests for resolve_permission_context.
+
+    The function now imports get_session from handoff_db and
+    is_valid_chat_id/load_credentials/load_worker_url from handoff_config
+    directly, so we patch those modules on permission_core. Only
+    get_tenant_token still goes through the lark_im_mod parameter.
+    """
+
+    def _make_fake(self, *, token="tok", token_error=None):
+        """Build a minimal FakeLark that only provides get_tenant_token."""
         class FakeLark:
-            @staticmethod
-            def get_session(session_id):
-                return session
-
-            @staticmethod
-            def is_valid_chat_id(chat_id):
-                if not chat_id or not isinstance(chat_id, str):
-                    return False
-                return len(chat_id) <= 128
-
-            @staticmethod
-            def load_credentials():
-                return creds
-
             @staticmethod
             def get_tenant_token(app_id, app_secret):
                 if token_error:
                     raise RuntimeError(token_error)
                 return token
-
-            @staticmethod
-            def load_worker_url():
-                return worker_url
         return FakeLark
+
+    def _patch_deps(self, *, session=None, creds=None,
+                    worker_url="https://w.example"):
+        """Patch handoff_db/handoff_config functions on permission_core."""
+        import unittest.mock as _m
+
+        patches = [
+            _m.patch.object(permission_core.handoff_db, "get_session",
+                            return_value=session),
+            _m.patch.object(permission_core.handoff_config, "is_valid_chat_id",
+                            side_effect=lambda cid: bool(cid) and isinstance(cid, str) and len(cid) <= 128),
+            _m.patch.object(permission_core.handoff_config, "load_credentials",
+                            return_value=creds),
+            _m.patch.object(permission_core.handoff_config, "load_worker_url",
+                            return_value=worker_url),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
 
     def test_no_session_id(self):
         fake = self._make_fake()
+        self._patch_deps()
         c = permission_core.resolve_permission_context(fake, "")
         self.assertFalse(c["ok"])
         self.assertEqual(c["error"], "no_session_id")
 
     def test_inactive_session(self):
-        fake = self._make_fake(session=None)
+        fake = self._make_fake()
+        self._patch_deps(session=None)
         c = permission_core.resolve_permission_context(fake, "gone")
         self.assertFalse(c["ok"])
         self.assertEqual(c["error"], "inactive")
 
     def test_no_chat_id(self):
-        fake = self._make_fake(session={"chat_id": ""})
+        fake = self._make_fake()
+        self._patch_deps(session={"chat_id": ""})
         c = permission_core.resolve_permission_context(fake, "s1")
         self.assertFalse(c["ok"])
         self.assertEqual(c["error"], "no_chat_id")
 
     def test_invalid_chat_id(self):
-        fake = self._make_fake(session={"chat_id": "x" * 200})
+        fake = self._make_fake()
+        self._patch_deps(session={"chat_id": "x" * 200})
         c = permission_core.resolve_permission_context(fake, "s1")
         self.assertFalse(c["ok"])
         self.assertEqual(c["error"], "invalid_chat_id")
 
     def test_no_credentials(self):
-        fake = self._make_fake(session={"chat_id": "c1"}, creds=None)
+        fake = self._make_fake()
+        self._patch_deps(session={"chat_id": "c1"}, creds=None)
         c = permission_core.resolve_permission_context(fake, "s1")
         self.assertFalse(c["ok"])
         self.assertEqual(c["error"], "no_credentials")
         self.assertEqual(c["chat_id"], "c1")
 
     def test_token_error(self):
-        fake = self._make_fake(
+        fake = self._make_fake(token_error="bad creds")
+        self._patch_deps(
             session={"chat_id": "c1"},
             creds={"app_id": "a", "app_secret": "b"},
-            token_error="bad creds",
         )
         c = permission_core.resolve_permission_context(fake, "s1")
         self.assertFalse(c["ok"])
@@ -534,7 +548,8 @@ class ResolvePermissionContextTest(unittest.TestCase):
         self.assertIn("bad creds", c["error_detail"])
 
     def test_no_worker_url(self):
-        fake = self._make_fake(
+        fake = self._make_fake()
+        self._patch_deps(
             session={"chat_id": "c1"},
             creds={"app_id": "a", "app_secret": "b"},
             worker_url=None,
@@ -545,7 +560,8 @@ class ResolvePermissionContextTest(unittest.TestCase):
         self.assertEqual(c["token"], "tok")
 
     def test_ok(self):
-        fake = self._make_fake(
+        fake = self._make_fake()
+        self._patch_deps(
             session={"chat_id": "c1"},
             creds={"app_id": "a", "app_secret": "b"},
         )

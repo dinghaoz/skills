@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """Shared permission-bridge core logic for Claude and OpenCode."""
 
+import os
 import random
+import sys
 import time
 import uuid
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+import handoff_config
+import handoff_db
 
 
 ALLOW_ALWAYS_TEXTS = {"always", "yes always", "always allow"}
@@ -119,11 +128,15 @@ def resolve_permission_context(lark_im_mod, session_id):
       ok: bool
       error: one of no_session_id|inactive|no_chat_id|invalid_chat_id|no_credentials|token_error|no_worker_url
       chat_id, token, worker_url when ok
+
+    Note: lark_im_mod parameter is kept for API compatibility but only
+    get_tenant_token is used from it. Other functions are imported directly
+    from handoff_config and handoff_db.
     """
     if not session_id:
         return {"ok": False, "error": "no_session_id"}
 
-    session = lark_im_mod.get_session(session_id)
+    session = handoff_db.get_session(session_id)
     if not session:
         return {"ok": False, "error": "inactive"}
 
@@ -131,10 +144,10 @@ def resolve_permission_context(lark_im_mod, session_id):
     if not chat_id:
         return {"ok": False, "error": "no_chat_id"}
 
-    if not lark_im_mod.is_valid_chat_id(chat_id):
+    if not handoff_config.is_valid_chat_id(chat_id):
         return {"ok": False, "error": "invalid_chat_id"}
 
-    credentials = lark_im_mod.load_credentials()
+    credentials = handoff_config.load_credentials()
     if not credentials:
         return {"ok": False, "error": "no_credentials", "chat_id": chat_id}
 
@@ -151,7 +164,7 @@ def resolve_permission_context(lark_im_mod, session_id):
             "chat_id": chat_id,
         }
 
-    worker_url = lark_im_mod.load_worker_url()
+    worker_url = handoff_config.load_worker_url()
     if not worker_url:
         return {
             "ok": False,

@@ -9,16 +9,17 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
 import lark_im
 
 
 def check_credentials():
     try:
-        with open(lark_im.CONFIG_FILE) as f:
+        with open(handoff_config.CONFIG_FILE) as f:
             data = json.load(f)
     except FileNotFoundError:
         return False, (
-            f"Config file not found: {lark_im.CONFIG_FILE}\n"
+            f"Config file not found: {handoff_config.CONFIG_FILE}\n"
             f"Create it with app_id, app_secret, worker_url, and email.\n"
             f"  app_id/app_secret: Get from https://open.larksuite.com/app → your app → Credentials\n"
             f"  worker_url: Deploy the worker and note the URL. Run /handoff init\n"
@@ -26,7 +27,7 @@ def check_credentials():
         )
     except json.JSONDecodeError:
         return False, (
-            f"Config file has invalid JSON: {lark_im.CONFIG_FILE}\n"
+            f"Config file has invalid JSON: {handoff_config.CONFIG_FILE}\n"
             f"Fix the syntax or delete it and run /handoff init to recreate."
         )
 
@@ -37,7 +38,7 @@ def check_credentials():
         im_cfg = ims.get(provider)
         if not isinstance(im_cfg, dict):
             return False, (
-                f"No config for IM provider '{provider}' in {lark_im.CONFIG_FILE}"
+                f"No config for IM provider '{provider}' in {handoff_config.CONFIG_FILE}"
             )
     else:
         im_cfg = data
@@ -51,26 +52,26 @@ def check_credentials():
         missing.append("email")
 
     if missing:
-        return False, (f"Missing {', '.join(missing)} in {lark_im.CONFIG_FILE}")
+        return False, (f"Missing {', '.join(missing)} in {handoff_config.CONFIG_FILE}")
     return True, None
 
 
 def check_worker_url():
-    url = lark_im.load_worker_url()
+    url = handoff_config.load_worker_url()
     if not url:
         return False, (
             f"Missing worker_url.\n"
-            f"Add worker_url to {lark_im.CONFIG_FILE}\n"
+            f"Add worker_url to {handoff_config.CONFIG_FILE}\n"
             f"Deploy the worker and note the URL. Run /handoff init"
         )
     return True, url
 
 
 def check_api_key():
-    key = lark_im.load_api_key()
+    key = handoff_config.load_api_key()
     if not key:
         return False, (
-            f"Missing worker_api_key in {lark_im.CONFIG_FILE}\n"
+            f"Missing worker_api_key in {handoff_config.CONFIG_FILE}\n"
             f'Generate a random key: python3 -c "import secrets; print(secrets.token_urlsafe(32))"\n'
             f"Add it to the config file AND as a Cloudflare Worker secret:\n"
             f"  cd .claude/skills/handoff/worker && npx wrangler secret put API_KEY"
@@ -86,7 +87,7 @@ def check_worker_reachable(worker_url):
                 "-s",
                 "--max-time",
                 "10",
-                *lark_im._worker_auth_headers(),
+                *handoff_config._worker_auth_headers(),
                 f"{worker_url}/health",
             ],
             capture_output=True,
@@ -117,7 +118,7 @@ def check_worker_reachable(worker_url):
 
 
 def check_token():
-    creds = lark_im.load_credentials()
+    creds = handoff_config.load_credentials()
     if not creds:
         return False, "Skipped (no credentials)"
     try:
@@ -165,7 +166,7 @@ def check_hooks():
 
     # Check project settings (.claude/) if available
     try:
-        project_dir = lark_im._require_project_dir()
+        project_dir = handoff_config._require_project_dir()
         for fname in ["settings.json", "settings.local.json"]:
             path = os.path.join(project_dir, ".claude", fname)
             try:
@@ -187,7 +188,7 @@ def check_hooks():
 def check_opencode_plugin():
     """Check that the OpenCode handoff plugin files are installed in the project."""
     try:
-        project_dir = lark_im._require_project_dir()
+        project_dir = handoff_config._require_project_dir()
     except RuntimeError:
         return False, "HANDOFF_PROJECT_DIR is not set"
 
@@ -217,10 +218,10 @@ def report():
     print("=== Handoff Configuration Report ===\n")
 
     # Config file
-    print(f"Config file: {lark_im.CONFIG_FILE}")
+    print(f"Config file: {handoff_config.CONFIG_FILE}")
     config = {}
     try:
-        with open(lark_im.CONFIG_FILE) as f:
+        with open(handoff_config.CONFIG_FILE) as f:
             config = json.load(f)
     except FileNotFoundError:
         print("  (file not found)\n")
@@ -234,7 +235,7 @@ def report():
         print(f"  {field}: {display}")
 
     # IM-specific fields
-    im_cfg = lark_im._resolve_im_config(config) or {}
+    im_cfg = handoff_config._resolve_im_config(config) or {}
     provider = config.get("default_im", "lark")
     print(f"  IM provider: {provider}")
     for field, redact in [("app_id", False), ("app_secret", True), ("email", False)]:
@@ -266,7 +267,7 @@ def report():
     # Hooks
     print(f"\nHooks:")
     try:
-        project_dir = lark_im._require_project_dir()
+        project_dir = handoff_config._require_project_dir()
     except RuntimeError:
         print("  HANDOFF_PROJECT_DIR is not set — cannot check hooks")
         project_dir = ""  # skip hook scanning below
@@ -335,7 +336,7 @@ def check_dual_install():
         return True, None  # No global install, no conflict
 
     try:
-        project_dir = lark_im._require_project_dir()
+        project_dir = handoff_config._require_project_dir()
     except RuntimeError:
         return True, None  # Can't check project dir, skip
 

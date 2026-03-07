@@ -14,6 +14,9 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_config
+import handoff_db
+import handoff_worker
 import lark_im
 
 
@@ -23,7 +26,7 @@ def warn(msg):
 
 def get_worktree_name():
     """Get worktree name from git, falling back to project folder name."""
-    return lark_im.get_worktree_name() or os.path.basename(lark_im._require_project_dir())
+    return handoff_config.get_worktree_name() or os.path.basename(handoff_config._require_project_dir())
 
 
 def find_groups_for_workspace(token, workspace_id, open_id=None):
@@ -153,7 +156,7 @@ def create_handoff_group(
     """
     group_name = compute_next_group_name(worktree, machine, existing_names)
     if not workspace_id:
-        workspace_id = lark_im.get_workspace_id()
+        workspace_id = handoff_config.get_workspace_id()
     description = f"workspace:{workspace_id}"
 
     chat_id = lark_im.create_chat(token, group_name, description=description)
@@ -180,7 +183,7 @@ def _reset_working_state():
     session_id = os.environ.get("HANDOFF_SESSION_ID", "")
     if not session_id:
         return
-    lark_im.clear_working_message(session_id)
+    handoff_db.clear_working_message(session_id)
 
 
 def send(token, chat_id, title, message, is_card, color, buttons=None,
@@ -205,14 +208,14 @@ def send(token, chat_id, title, message, is_card, color, buttons=None,
         msg_id = lark_im.send_message(token, chat_id, card)
     # Record in local DB so we can resolve parent_id on replies
     try:
-        lark_im.record_sent_message(msg_id, text=message, title=title, chat_id=chat_id)
+        handoff_db.record_sent_message(msg_id, text=message, title=title, chat_id=chat_id)
     except Exception as e:
         warn(f"failed to record sent message {msg_id}: {e}")
     # Register with worker so reactions can be routed to this chat
     try:
-        worker_url = lark_im.load_worker_url()
+        worker_url = handoff_config.load_worker_url()
         if worker_url:
-            lark_im.register_message(worker_url, msg_id, chat_id)
+            handoff_worker.register_message(worker_url, msg_id, chat_id)
     except Exception as e:
         warn(f"failed to register message {msg_id} with worker: {e}")
     return msg_id

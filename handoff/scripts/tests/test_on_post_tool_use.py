@@ -663,20 +663,20 @@ class FormatFailureTest(unittest.TestCase):
 
 class MainTest(unittest.TestCase):
     def setUp(self):
-        self._orig_get_session = on_post_tool_use.lark_im.get_session
-        self._orig_load_creds = on_post_tool_use.lark_im.load_credentials
+        self._orig_get_session = on_post_tool_use.handoff_db.get_session
+        self._orig_load_creds = on_post_tool_use.handoff_config.load_credentials
         self._orig_get_token = on_post_tool_use.lark_im.get_tenant_token
         self._orig_send_msg = on_post_tool_use.lark_im.send_message
         self._orig_build_card = on_post_tool_use.lark_im.build_markdown_card
-        self._orig_record = on_post_tool_use.lark_im.record_sent_message
+        self._orig_record = on_post_tool_use.handoff_db.record_sent_message
 
     def tearDown(self):
-        on_post_tool_use.lark_im.get_session = self._orig_get_session
-        on_post_tool_use.lark_im.load_credentials = self._orig_load_creds
+        on_post_tool_use.handoff_db.get_session = self._orig_get_session
+        on_post_tool_use.handoff_config.load_credentials = self._orig_load_creds
         on_post_tool_use.lark_im.get_tenant_token = self._orig_get_token
         on_post_tool_use.lark_im.send_message = self._orig_send_msg
         on_post_tool_use.lark_im.build_markdown_card = self._orig_build_card
-        on_post_tool_use.lark_im.record_sent_message = self._orig_record
+        on_post_tool_use.handoff_db.record_sent_message = self._orig_record
 
     def _run_main(self, hook_input):
         old_stdin, old_stdout, old_stderr = sys.stdin, sys.stdout, sys.stderr
@@ -693,7 +693,7 @@ class MainTest(unittest.TestCase):
 
     def test_no_session_returns_early(self):
         sent = []
-        on_post_tool_use.lark_im.get_session = lambda sid: None
+        on_post_tool_use.handoff_db.get_session = lambda sid: None
         on_post_tool_use.lark_im.send_message = lambda *a, **kw: sent.append(1)
 
         self._run_main(
@@ -722,11 +722,11 @@ class MainTest(unittest.TestCase):
 
     def test_bash_output_sent(self):
         sent = []
-        on_post_tool_use.lark_im.get_session = lambda sid: {
+        on_post_tool_use.handoff_db.get_session = lambda sid: {
             "chat_id": "c1",
             "message_filter": "verbose",
         }
-        on_post_tool_use.lark_im.load_credentials = lambda: {
+        on_post_tool_use.handoff_config.load_credentials = lambda: {
             "app_id": "a",
             "app_secret": "b",
         }
@@ -735,7 +735,7 @@ class MainTest(unittest.TestCase):
         on_post_tool_use.lark_im.send_message = lambda *a, **kw: (
             sent.append(1) or "m1"
         )
-        on_post_tool_use.lark_im.record_sent_message = lambda *a, **kw: None
+        on_post_tool_use.handoff_db.record_sent_message = lambda *a, **kw: None
 
         self._run_main(
             {
@@ -749,11 +749,11 @@ class MainTest(unittest.TestCase):
 
     def test_failure_event_sends_red_card(self):
         cards = []
-        on_post_tool_use.lark_im.get_session = lambda sid: {
+        on_post_tool_use.handoff_db.get_session = lambda sid: {
             "chat_id": "c1",
             "message_filter": "verbose",
         }
-        on_post_tool_use.lark_im.load_credentials = lambda: {
+        on_post_tool_use.handoff_config.load_credentials = lambda: {
             "app_id": "a",
             "app_secret": "b",
         }
@@ -762,7 +762,7 @@ class MainTest(unittest.TestCase):
             lambda body, title=None, color=None: cards.append(color) or {}
         )
         on_post_tool_use.lark_im.send_message = lambda *a, **kw: "m1"
-        on_post_tool_use.lark_im.record_sent_message = lambda *a, **kw: None
+        on_post_tool_use.handoff_db.record_sent_message = lambda *a, **kw: None
 
         self._run_main(
             {
@@ -777,8 +777,8 @@ class MainTest(unittest.TestCase):
 
     def test_interrupt_skipped(self):
         sent = []
-        on_post_tool_use.lark_im.get_session = lambda sid: {"chat_id": "c1"}
-        on_post_tool_use.lark_im.load_credentials = lambda: None
+        on_post_tool_use.handoff_db.get_session = lambda sid: {"chat_id": "c1"}
+        on_post_tool_use.handoff_config.load_credentials = lambda: None
         on_post_tool_use.lark_im.send_message = lambda *a, **kw: sent.append(1)
 
         self._run_main(
@@ -794,7 +794,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(len(sent), 0)
 
     def test_invalid_json_handled(self):
-        on_post_tool_use.lark_im.get_session = lambda sid: None
+        on_post_tool_use.handoff_db.get_session = lambda sid: None
         old_stdin, old_stdout, old_stderr = sys.stdin, sys.stdout, sys.stderr
         sys.stdin = io.StringIO("not json")
         sys.stdout = io.StringIO()

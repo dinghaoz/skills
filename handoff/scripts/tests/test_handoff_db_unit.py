@@ -11,6 +11,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
 
+import handoff_db
+import handoff_worker
 import lark_im
 
 
@@ -28,9 +30,9 @@ class HandoffDbUnitTest(unittest.TestCase):
         os.environ["HANDOFF_PROJECT_DIR"] = self.project_dir
         os.environ["HANDOFF_SESSION_TOOL"] = "Claude Code"
 
-        self.db_path = lark_im._db_path()
-        lark_im._db_initialized.discard(self.db_path)
-        conn = lark_im._get_db()
+        self.db_path = handoff_db._db_path()
+        handoff_db._db_initialized.discard(self.db_path)
+        conn = handoff_db._get_db()
         conn.close()
 
     def tearDown(self):
@@ -73,24 +75,24 @@ class HandoffDbUnitTest(unittest.TestCase):
         self.assertEqual(messages["direction"][3], 1)
 
     def test_unique_chat_claim(self):
-        lark_im.register_session("s1", "chat-1", "opus")
-        s1 = lark_im.get_session("s1")
+        handoff_db.register_session("s1", "chat-1", "opus")
+        s1 = handoff_db.get_session("s1")
         if s1 is None:
             self.fail("expected session s1")
         self.assertEqual(s1["chat_id"], "chat-1")
 
         with self.assertRaises(RuntimeError):
-            lark_im.register_session("s2", "chat-1", "opus")
+            handoff_db.register_session("s2", "chat-1", "opus")
 
-        lark_im.register_session("s1", "chat-1", "opus")
-        s1_new = lark_im.get_session("s1")
+        handoff_db.register_session("s1", "chat-1", "opus")
+        s1_new = handoff_db.get_session("s1")
         if s1_new is None:
             self.fail("expected updated session s1")
 
     def test_session_tool_default_from_env(self):
         os.environ["HANDOFF_SESSION_TOOL"] = "OpenCode"
-        lark_im.register_session("sid-env", "chat-env", "opus")
-        sess = lark_im.get_session("sid-env")
+        handoff_db.register_session("sid-env", "chat-env", "opus")
+        sess = handoff_db.get_session("sid-env")
         if sess is None:
             self.fail("expected session sid-env")
         self.assertEqual(sess["session_tool"], "OpenCode")
@@ -124,35 +126,35 @@ class HandoffDbUnitTest(unittest.TestCase):
             conn.close()
 
         # Monkeypatch time for deterministic cutoff
-        real_time = lark_im.time.time
-        lark_im.time.time = lambda: now_s
+        real_time = handoff_db.time.time
+        handoff_db.time.time = lambda: now_s
         try:
-            deleted = lark_im.prune_stale_sessions()
+            deleted = handoff_db.prune_stale_sessions()
         finally:
-            lark_im.time.time = real_time
+            handoff_db.time.time = real_time
 
         self.assertEqual(deleted, 1)
-        self.assertIsNone(lark_im.get_session("old"))
-        self.assertIsNotNone(lark_im.get_session("new"))
+        self.assertIsNone(handoff_db.get_session("old"))
+        self.assertIsNotNone(handoff_db.get_session("new"))
 
     def test_message_recording_directions(self):
         with self.assertRaises(ValueError):
-            lark_im.record_sent_message("m1", text="x", title="t", chat_id=None)
+            handoff_db.record_sent_message("m1", text="x", title="t", chat_id=None)
 
-        lark_im.record_sent_message("m1", text="sent", title="A", chat_id="chat-a")
-        lark_im.record_received_message(
+        handoff_db.record_sent_message("m1", text="sent", title="A", chat_id="chat-a")
+        handoff_db.record_received_message(
             chat_id="chat-a",
             text="recv",
             source_message_id="ext-1",
             message_time=1700000000000,
         )
 
-        parent = lark_im.lookup_parent_message("m1")
+        parent = handoff_db.lookup_parent_message("m1")
         if parent is None:
             self.fail("expected parent message m1")
         self.assertEqual(parent["text"], "sent")
 
-        parent_recv = lark_im.lookup_parent_message("recv:ext-1")
+        parent_recv = handoff_db.lookup_parent_message("recv:ext-1")
         self.assertIsNone(parent_recv)
 
     def test_safe_local_filename_blocks_traversal(self):
@@ -164,9 +166,9 @@ class HandoffDbUnitTest(unittest.TestCase):
         self.assertTrue(generated.startswith("file-"))
 
     def test_takeover_chat_compare_and_swap(self):
-        lark_im.register_session("old", "chat-tk", "opus")
+        handoff_db.register_session("old", "chat-tk", "opus")
 
-        ok, owner, replaced = lark_im.takeover_chat(
+        ok, owner, replaced = handoff_db.takeover_chat(
             "new",
             "chat-tk",
             "sonnet",
@@ -176,18 +178,18 @@ class HandoffDbUnitTest(unittest.TestCase):
         self.assertEqual(owner, "new")
         self.assertEqual(replaced, "old")
 
-        sess = lark_im.get_session("new")
+        sess = handoff_db.get_session("new")
         if sess is None:
             self.fail("expected new session owner")
         self.assertEqual(sess["chat_id"], "chat-tk")
-        self.assertIsNone(lark_im.get_session("old"))
+        self.assertIsNone(handoff_db.get_session("old"))
 
     def test_takeover_chat_conflict_rejected(self):
-        lark_im.register_session("old", "chat-tk2", "opus")
-        lark_im.register_session("other", "chat-tk2b", "opus")
+        handoff_db.register_session("old", "chat-tk2", "opus")
+        handoff_db.register_session("other", "chat-tk2b", "opus")
 
         # Current owner is "old", expected says "other" -> conflict.
-        ok, owner, replaced = lark_im.takeover_chat(
+        ok, owner, replaced = handoff_db.takeover_chat(
             "new",
             "chat-tk2",
             "sonnet",
@@ -196,12 +198,12 @@ class HandoffDbUnitTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(owner, "old")
         self.assertIsNone(replaced)
-        self.assertIsNone(lark_im.get_session("new"))
+        self.assertIsNone(handoff_db.get_session("new"))
 
     def test_takeover_chat_without_expected_owner_is_strict(self):
-        lark_im.register_session("old", "chat-strict", "opus")
+        handoff_db.register_session("old", "chat-strict", "opus")
 
-        ok, owner, replaced = lark_im.takeover_chat(
+        ok, owner, replaced = handoff_db.takeover_chat(
             "new",
             "chat-strict",
             "sonnet",
@@ -211,55 +213,55 @@ class HandoffDbUnitTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(owner, "old")
         self.assertIsNone(replaced)
-        self.assertIsNone(lark_im.get_session("new"))
+        self.assertIsNone(handoff_db.get_session("new"))
 
     # --- Tests for recent bug fixes ---
 
     def test_set_session_last_checked_int(self):
         """Integer millisecond timestamps are stored as-is."""
-        lark_im.register_session("ts-int", "chat-ts-int", "opus")
-        lark_im.set_session_last_checked("ts-int", 1771300000000)
-        sess = lark_im.get_session("ts-int")
+        handoff_db.register_session("ts-int", "chat-ts-int", "opus")
+        handoff_db.set_session_last_checked("ts-int", 1771300000000)
+        sess = handoff_db.get_session("ts-int")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["last_checked"], 1771300000000)
 
     def test_set_session_last_checked_string_int(self):
         """String integer timestamps (as Lark sends them) are parsed correctly."""
-        lark_im.register_session("ts-str", "chat-ts-str", "opus")
-        lark_im.set_session_last_checked("ts-str", "1771300000000")
-        sess = lark_im.get_session("ts-str")
+        handoff_db.register_session("ts-str", "chat-ts-str", "opus")
+        handoff_db.set_session_last_checked("ts-str", "1771300000000")
+        sess = handoff_db.get_session("ts-str")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["last_checked"], 1771300000000)
 
     def test_set_session_last_checked_float_string(self):
         """Float-string timestamps are safely truncated to int (defensive fix)."""
-        lark_im.register_session("ts-flt", "chat-ts-flt", "opus")
-        lark_im.set_session_last_checked("ts-flt", "1771300000000.5")
-        sess = lark_im.get_session("ts-flt")
+        handoff_db.register_session("ts-flt", "chat-ts-flt", "opus")
+        handoff_db.set_session_last_checked("ts-flt", "1771300000000.5")
+        sess = handoff_db.get_session("ts-flt")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["last_checked"], 1771300000000)
 
     def test_set_session_last_checked_float(self):
         """Float values are coerced to int (defensive fix)."""
-        lark_im.register_session("ts-f2", "chat-ts-f2", "opus")
-        lark_im.set_session_last_checked("ts-f2", 1771300000000.9)
-        sess = lark_im.get_session("ts-f2")
+        handoff_db.register_session("ts-f2", "chat-ts-f2", "opus")
+        handoff_db.set_session_last_checked("ts-f2", 1771300000000.9)
+        sess = handoff_db.get_session("ts-f2")
         self.assertIsNotNone(sess)
         self.assertEqual(sess["last_checked"], 1771300000000)
 
     def test_set_session_last_checked_none(self):
         """None is accepted and stored as NULL without error."""
-        lark_im.register_session("ts-none", "chat-ts-none", "opus")
-        lark_im.set_session_last_checked("ts-none", None)
-        sess = lark_im.get_session("ts-none")
+        handoff_db.register_session("ts-none", "chat-ts-none", "opus")
+        handoff_db.set_session_last_checked("ts-none", None)
+        sess = handoff_db.get_session("ts-none")
         self.assertIsNotNone(sess)
         self.assertIsNone(sess["last_checked"])
 
     def test_set_session_last_checked_invalid(self):
         """Non-numeric strings result in NULL without raising."""
-        lark_im.register_session("ts-bad", "chat-ts-bad", "opus")
-        lark_im.set_session_last_checked("ts-bad", "not-a-number")
-        sess = lark_im.get_session("ts-bad")
+        handoff_db.register_session("ts-bad", "chat-ts-bad", "opus")
+        handoff_db.set_session_last_checked("ts-bad", "not-a-number")
+        sess = handoff_db.get_session("ts-bad")
         self.assertIsNotNone(sess)
         self.assertIsNone(sess["last_checked"])
 
@@ -268,21 +270,21 @@ class HandoffDbUnitTest(unittest.TestCase):
         Same text + chat + timestamp should produce the same DB message_id on repeated calls.
         """
         # First call — inserts
-        lark_im.record_received_message(
+        handoff_db.record_received_message(
             chat_id="chat-hash",
             text="hello world",
             source_message_id=None,
             message_time=1771300000000,
         )
         # Second call — same inputs, should hit INSERT OR REPLACE idempotently (no error)
-        lark_im.record_received_message(
+        handoff_db.record_received_message(
             chat_id="chat-hash",
             text="hello world",
             source_message_id=None,
             message_time=1771300000000,
         )
         # Verify exactly one row exists (idempotent upsert)
-        conn = lark_im._get_db()
+        conn = handoff_db._get_db()
         try:
             rows = conn.execute(
                 "SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-hash' AND direction = 'received'"
@@ -306,7 +308,7 @@ class HandoffDbUnitTest(unittest.TestCase):
             def close(self):
                 closed.append(True)
 
-        ws = lark_im._WebSocket.__new__(lark_im._WebSocket)
+        ws = handoff_worker._WebSocket.__new__(handoff_worker._WebSocket)
         ws._sock = FakeSocket()
         ws._buf = b""
 
@@ -317,14 +319,14 @@ class HandoffDbUnitTest(unittest.TestCase):
 
     def test_get_unprocessed_messages_returns_unprocessed(self):
         """Messages received after the last sent message are returned."""
-        lark_im.record_sent_message("m-s1", text="hi", title="", chat_id="chat-up")
-        lark_im.record_received_message(
+        handoff_db.record_sent_message("m-s1", text="hi", title="", chat_id="chat-up")
+        handoff_db.record_received_message(
             chat_id="chat-up",
             text="user reply",
             source_message_id="ext-up1",
-            message_time=int(lark_im.time.time() * 1000) + 5000,
+            message_time=int(handoff_db.time.time() * 1000) + 5000,
         )
-        result = lark_im.get_unprocessed_messages("chat-up")
+        result = handoff_db.get_unprocessed_messages("chat-up")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["text"], "user reply")
         self.assertEqual(result[0]["message_id"], "ext-up1")
@@ -332,40 +334,40 @@ class HandoffDbUnitTest(unittest.TestCase):
 
     def test_get_unprocessed_messages_empty_when_all_processed(self):
         """No unprocessed messages when last sent is newer than last received."""
-        lark_im.record_received_message(
+        handoff_db.record_received_message(
             chat_id="chat-up2",
             text="old msg",
             source_message_id="ext-up2",
             message_time=1000,
         )
-        lark_im.record_sent_message(
+        handoff_db.record_sent_message(
             "m-s2", text="response", title="", chat_id="chat-up2"
         )
-        result = lark_im.get_unprocessed_messages("chat-up2")
+        result = handoff_db.get_unprocessed_messages("chat-up2")
         self.assertEqual(len(result), 0)
 
     def test_get_unprocessed_messages_empty_no_messages(self):
         """Empty result when there are no messages at all."""
-        result = lark_im.get_unprocessed_messages("chat-nonexistent")
+        result = handoff_db.get_unprocessed_messages("chat-nonexistent")
         self.assertEqual(len(result), 0)
 
     def test_get_unprocessed_messages_multiple(self):
         """Multiple unprocessed messages are returned in order."""
-        lark_im.record_sent_message("m-s3", text="hi", title="", chat_id="chat-up3")
-        base = int(lark_im.time.time() * 1000) + 5000
-        lark_im.record_received_message(
+        handoff_db.record_sent_message("m-s3", text="hi", title="", chat_id="chat-up3")
+        base = int(handoff_db.time.time() * 1000) + 5000
+        handoff_db.record_received_message(
             chat_id="chat-up3",
             text="msg A",
             source_message_id="ext-a",
             message_time=base,
         )
-        lark_im.record_received_message(
+        handoff_db.record_received_message(
             chat_id="chat-up3",
             text="msg B",
             source_message_id="ext-b",
             message_time=base + 1000,
         )
-        result = lark_im.get_unprocessed_messages("chat-up3")
+        result = handoff_db.get_unprocessed_messages("chat-up3")
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["text"], "msg A")
         self.assertEqual(result[1]["text"], "msg B")
