@@ -84,7 +84,7 @@ def main():
 
     # Apply model-based default timeout if not explicitly provided
     if args.timeout is None:
-        args.timeout = handoff_db.default_poll_timeout(ctx.get("session"))
+        args.timeout = handoff_config.default_poll_timeout(ctx.get("session"))
 
     # In sidecar mode, @-mention the target user so they get notified.
     # --mention-user-id overrides (for guest replies); otherwise default to operator.

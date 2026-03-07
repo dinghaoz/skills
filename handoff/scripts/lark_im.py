@@ -29,6 +29,32 @@ from lark_auth import LarkAuth  # noqa: E402
 _auth = LarkAuth(CONFIG_FILE)
 
 
+def _cleanup_old_downloads(max_age_hours=24):
+    """Remove downloaded files older than max_age_hours to prevent accumulation.
+
+    Called automatically at module import time to clean up handoff-images/
+    and handoff-files/ directories. Non-critical — errors are ignored.
+    """
+    try:
+        base = handoff_tmp_dir()
+        cutoff = time.time() - (max_age_hours * 3600)
+        for subdir in ("handoff-images", "handoff-files"):
+            dir_path = os.path.join(base, subdir)
+            if not os.path.isdir(dir_path):
+                continue
+            for entry in os.scandir(dir_path):
+                try:
+                    if entry.is_file() and entry.stat().st_mtime < cutoff:
+                        os.unlink(entry.path)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+_cleanup_old_downloads()
+
+
 def get_tenant_token(app_id, app_secret):
     """Get or refresh tenant access token."""
     return _auth._get_tenant_token(app_id, app_secret)

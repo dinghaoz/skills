@@ -178,7 +178,7 @@ def main():
 
     # Apply model-based default timeout if not explicitly provided
     if args.timeout is None:
-        args.timeout = handoff_db.default_poll_timeout(session)
+        args.timeout = handoff_config.default_poll_timeout(session)
 
     # Check for unprocessed messages (received but never processed by Claude,
     # e.g. after an API crash). Replay them before polling the worker.

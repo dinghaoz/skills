@@ -739,19 +739,6 @@ def is_bot_sent_message(message_id):
         conn.close()
 
 
-def default_poll_timeout(session):
-    """Return the appropriate poll timeout in seconds based on the session model.
-
-    GPT-based models require a bounded timeout (540s) because their tool-use
-    runtime has a hard 600s limit.  All other models (Claude, Gemini, etc.)
-    can block indefinitely (0) which reduces background-task churn.
-    """
-    model = (session or {}).get("session_model", "") or ""
-    if "gpt" in model.lower():
-        return 540
-    return 0
-
-
 def get_unprocessed_messages(chat_id):
     """Return received messages newer than the last sent message.
 

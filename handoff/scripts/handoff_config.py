@@ -9,7 +9,6 @@ import os
 import re
 import socket
 import sys
-import time
 
 HANDOFF_HOME = os.path.expanduser("~/.handoff")
 _CHAT_ID_RE = re.compile(r"^[A-Za-z0-9._:@-]+$")
@@ -135,31 +134,17 @@ def handoff_tmp_dir():
     return "/tmp/handoff"
 
 
-def _cleanup_old_downloads(max_age_hours=24):
-    """Remove downloaded files older than max_age_hours to prevent accumulation.
+def default_poll_timeout(session):
+    """Return the appropriate poll timeout in seconds based on the session model.
 
-    Called automatically at module import time to clean up handoff-images/
-    and handoff-files/ directories. Non-critical — errors are ignored.
+    GPT-based models require a bounded timeout (540s) because their tool-use
+    runtime has a hard 600s limit.  All other models (Claude, Gemini, etc.)
+    can block indefinitely (0) which reduces background-task churn.
     """
-    try:
-        base = handoff_tmp_dir()
-        cutoff = time.time() - (max_age_hours * 3600)
-        for subdir in ("handoff-images", "handoff-files"):
-            dir_path = os.path.join(base, subdir)
-            if not os.path.isdir(dir_path):
-                continue
-            for entry in os.scandir(dir_path):
-                try:
-                    if entry.is_file() and entry.stat().st_mtime < cutoff:
-                        os.unlink(entry.path)
-                except Exception:
-                    pass  # Ignore cleanup errors
-    except Exception:
-        pass  # Non-critical cleanup
-
-
-# Run cleanup at module load to prevent unbounded accumulation
-_cleanup_old_downloads()
+    model = (session or {}).get("session_model", "") or ""
+    if "gpt" in model.lower():
+        return 540
+    return 0
 
 
 # ---------------------------------------------------------------------------
