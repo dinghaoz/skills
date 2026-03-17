@@ -76,7 +76,9 @@ def find_external_groups(token, open_id=None):
     """Find Lark groups where bot is a member but NOT workspace-tagged.
 
     These are "external" groups the bot was manually added to.
-    If open_id is provided, only returns chats where the user is a member.
+    The open_id parameter is accepted for backward compatibility but no longer
+    used for filtering — all external groups are returned regardless of
+    membership (the user picks which one to join).
     Returns list of dicts: [{chat_id, name, description}].
     """
     groups = []
@@ -92,16 +94,6 @@ def find_external_groups(token, open_id=None):
                 # Skip workspace-tagged groups (those are regular handoff groups)
                 if "workspace:" in desc:
                     continue
-                # If open_id is provided, verify user is a member of this chat
-                if open_id:
-                    try:
-                        members = lark_im.list_chat_members(token, cid)
-                        member_ids = {m.get("member_id") for m in members}
-                        if open_id not in member_ids:
-                            continue
-                    except Exception as e:
-                        warn(f"failed to check members of chat {cid}: {e}")
-                        continue
                 groups.append(
                     {
                         "chat_id": cid,
